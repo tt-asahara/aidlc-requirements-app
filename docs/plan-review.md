@@ -39,3 +39,10 @@ Claude Code の公式 permission 文書は、Bash の wildcard なしルール�
 単純な Bash の文字列一致だけを認め、メタ文字・引用・展開・複合コマンドは保留する。CLI バージョンを固定した後工程の照合が必要で、shell / OS の隔離機能とは扱わない。
 根拠: https://code.claude.com/docs/en/permissions#permission-rule-syntax
 ヘッダー開発認証に合わせ SSE は fetch stream とし、Cookie や query token 認証を増設しない。
+
+## M5 前のモード境界と Fake シナリオ
+
+M4 の runner はサーバー設定だけで切り替わるため、DB を再利用した場合の実行モード混在を防ぐ必要がある。
+M5 実装前に project のモードを永続化し、旧行は unknown・異なる実行設定は拒否する設計を追加した。
+ブラウザの一連の検証には拒否や進捗を含む明示的な合成 fixture を使う。AI-DLC 状態ファイルへのアプリによる進捗書込みは行わない。
+合成 project は初期配置した fixture と DB 履歴で再生し、実 project と区別する。未接続 DEMO の client state は再利用しない。
