@@ -573,6 +573,7 @@ type Progress = {
 - CSP は `sandbox allow-scripts; default-src 'none'` を基準に、同じ token / フォルダ配下の script・style・image・font・media 資源だけを許可します。
   inline script / style と data の画像・font は表示に必要な範囲で許可し、connect・form-action・frame・object・base は禁止します。
   `Referrer-Policy: no-referrer`、`Cache-Control: no-store`、`X-Content-Type-Options: nosniff` を付け、URL をアクセスログに保存しません。
+  opaque origin からの font / module 資源に必要な CORS は署名付き `/raw` の GET/HEAD のみに `Access-Control-Allow-Origin: *` を許可し、credentials は許可しません。API の CORS は開きません。
 - E2E では、親 DOM / Cookie を読めないこと、token が自身の URL から読めること、相対 CSS が効くこと、token が期限・改ざん・フォルダ越境・他プロジェクト・API 認証に使えないことを確かめます。
   この境界はネットワーク完全隔離ではありません。モックアップが既に表示権限を得た内容や token の転送を完全に防ぐ保証はせず、フェーズ2の egress / tenant 隔離とは分けます。
 
