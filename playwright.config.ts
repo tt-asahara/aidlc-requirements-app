@@ -25,7 +25,9 @@ export default defineConfig({
               process.env.UI_POC_BROWSER_EXECUTABLE ??
               "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
           }
-        : {}),
+        : process.platform === "linux"
+          ? { channel: "chrome" }
+          : {}),
     },
   },
   webServer: [

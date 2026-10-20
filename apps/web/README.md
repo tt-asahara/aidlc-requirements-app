@@ -59,3 +59,5 @@ bun run build
 ```
 
 追加依存・ルート lockfile/config・`apps/server`・`packages/shared` の変更はありません。ブラウザの確認項目と実測結果は [e2e/verification.md](e2e/verification.md) を参照してください。
+
+V2 E2E は Chromium sandbox を有効にします。Linux は既存の Google Chrome stable（Playwright の `chrome` channel）、macOS は標準インストール済み Chrome を使います。Ubuntu の AppArmor 設定やホストの user namespace 制限を変更しません。既存 Chrome がなければ準備エラーで停止し、sandbox を無効化して継続しません。
