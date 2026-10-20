@@ -1,13 +1,13 @@
 # AI-DLC 要件定義アプリ
 
-## ローカル起動（M2）
+## ローカル起動（M4）
 
 Bun 1.3.14 を用意し、リポジトリのルートで実行します。
 
 ```sh
 bun install
 bun scripts/fetch-aidlc.ts
-AIDLC_APP_DATA_DIR=../aidlc-app-data bun run dev
+AIDLC_APP_RUNNER=fake AIDLC_APP_DATA_DIR=../aidlc-app-data bun run dev
 ```
 
 画面は http://127.0.0.1:5173 、API は http://127.0.0.1:8787/api/health です。
@@ -41,7 +41,18 @@ bun test
 bun run build
 ```
 
-M2 では SQLite、録画再生、ターン制御まで実装済みです。画面とプロジェクト API の接続は M4/M5 以降で行います。
-`AIDLC_APP_RUNNER=fake` は録画再生を選びます。起動だけでは、どちらの runner でもモデルを呼びません。
+M4 では API の作成・会話送信・進捗・成果物・ZIP・許可・再接続まで実装済みです。画面は未接続デモで、API 接続は M5 です。
+`AIDLC_APP_RUNNER=fake` はモデル不要の録画再生です。health は runner を返し、録画費用を実課金として扱いません。
 同じデータディレクトリを複数の API サーバーで同時に開くことはできません。
-モデル不要の検証結果と費用の扱いは `docs/m2-validation.md` に記載します。
+
+モデルを呼ばず API の作成→送信→結果取得を確認するには、fake で起動後に実行します。サーバーが fake と返さなければ送信を拒否します。
+
+```sh
+bun scripts/api-smoke.ts
+# API ポートを変えた場合:
+AIDLC_APP_SMOKE_URL=http://127.0.0.1:18789 bun scripts/api-smoke.ts
+```
+
+health 以外の API は `X-AIDLC-User: dev`（または設定済み利用者）を指定してください。localhost の開発用で、外部公開向けの認証ではありません。
+`bun scripts/preview-smoke.ts` は一時 Chrome プロファイルでプレビューの境界を検証します。`UI_POC_BROWSER_EXECUTABLE` でブラウザを指定できます。
+結果と制限は `docs/m3-validation.md`、`docs/m4-validation.md` に記載します。

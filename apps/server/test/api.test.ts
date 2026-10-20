@@ -347,6 +347,7 @@ test("API validates create/input/pagination, surfaces provisioning failure and r
 });
 test("I2: active turn returns 409, owner cancellation and SSE terminal result are model-free", async () => {
   let started = false;
+  let publish: () => void = () => {};
   const runner: TurnRunner = {
     run: async (input, emit, signal) => {
       started = true;
@@ -355,6 +356,12 @@ test("I2: active turn returns 409, owner cancellation and SSE terminal result ar
         sessionId: input.claudeSessionId,
         model: input.model,
       });
+      await new Promise<void>((resolve) => {
+        publish = resolve;
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      if (!signal.aborted)
+        emit({ type: "tool_use", toolName: "Bash", summary: "git status" });
       while (!signal.aborted) await Bun.sleep(5);
       return failedOutcome("cancel", "cancelled");
     },
@@ -379,6 +386,9 @@ test("I2: active turn returns 409, owner cancellation and SSE terminal result ar
     `/api/projects/${id}/turns/${result.turn.id}/events`,
   );
   expect(events.headers.get("Content-Type")).toContain("text/event-stream");
+  const received = events.text();
+  publish();
+  await Bun.sleep(10);
   expect(
     (
       await f.request(`/api/projects/${id}/turns/${result.turn.id}/cancel`, {
@@ -387,7 +397,8 @@ test("I2: active turn returns 409, owner cancellation and SSE terminal result ar
     ).status,
   ).toBe(200);
   await f.turns.wait(result.turn.id);
-  const text = await events.text();
+  const text = await received;
+  expect(text).toContain("event: tool_use");
   expect(text).toContain("event: completed");
   expect(text).toContain('"status":"cancelled"');
 });

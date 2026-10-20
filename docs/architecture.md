@@ -1,16 +1,16 @@
-# アーキテクチャ（M2）
+# アーキテクチャ（M4）
 
 ## 現在の到達点
 
 M0 / M1 とフロント単独デモは main に統合済み。M2 で `Store` / `SqliteStore` と `TurnRunner` / `ClaudeCliRunner` / `FakeRunner`、ターン管理を実装した。
-API の現在の公開面は health のみ。プロジェクト API、開発用 `AuthProvider`、画面との接続は M4/M5 で行う。
+M3 の reader と M4 の全 API・開発用 `AuthProvider` を追加した。画面は未接続 DEMO のままで、接続は M5 で行う。
 デモの会話・許可・進捗はローカルの表示用データで、実際のターンへ送られない。
 
 `WorkspaceStorage` は既存のローカル実装を保持する。追加のサービス抽象化や Agent SDK は使用していない。
 SQLite は手書き migration を transaction で適用し、FK / WAL と queued・running の部分ユニークインデックスで整合性を守る。
 `TurnManager.submit` の明示呼び出しだけが新規ターンを作る。再試行・再接続・承認の自動送信はない。
 
-詳細は `m2-validation.md`。以下の取得・導入の記録は M1 から継続して有効。
+ターン基盤の詳細は `m2-validation.md`、reader は `m3-validation.md`、認可・配信・API は `m4-validation.md`。以下の取得・導入の記録は M1 から継続して有効。
 
 ## 固定した上流と実測
 

@@ -250,3 +250,16 @@ test("preview capability: tampering, expiry, restart, folder-prefix confusion an
   now += 600_000;
   expect(() => tokens.verify(token)).toThrow("expired");
 });
+
+test("fresh provisioned workspace has empty progress and artifacts until the first real engine turn", async () => {
+  const f = await setup();
+  await rm(join(f.workspace, "aidlc"), { recursive: true });
+  expect(await readProgress(f.workspace, false, false)).toEqual({
+    space: "default",
+    intents: [],
+    active: null,
+    waitingFor: "idle",
+  });
+  expect(await listArtifacts(f.workspace, "default")).toEqual([]);
+  expect(await collectArtifacts(f.workspace, "default")).toEqual([]);
+});
