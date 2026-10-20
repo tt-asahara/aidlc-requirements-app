@@ -646,3 +646,76 @@
     grid-template-columns: 230px minmax(350px, 1fr) 380px;
   }
 }
+.permission-card {
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid #e4cf9f;
+  border-radius: 9px;
+  background: #fffaf0;
+  font-size: 12px;
+}
+.permission-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.permission-card header span {
+  font-size: 11px;
+}
+.permission-card.approved {
+  border-color: #bddac9;
+  background: #f0f8f3;
+}
+.permission-card.denied,
+.permission-card.revoked {
+  border-color: #dde3df;
+  background: #f6f7f6;
+}
+.permission-card pre,
+.approved-rules pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px / 1.7 monospace;
+  background: #ffffffbb;
+  border: 1px solid #e4e8e1;
+  border-radius: 5px;
+  padding: 10px;
+  margin: 12px 0;
+}
+.permission-card small,
+.approved-rules small {
+  display: block;
+  color: #7b8a80;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.permission-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 5px;
+}
+.permission-warning {
+  color: #a35b20;
+  font-weight: 600;
+}
+.approved-rules {
+  font-size: 12px;
+  border-bottom: 1px solid #e2e9e4;
+  padding: 0 0 12px;
+  margin-bottom: 18px;
+}
+.approved-rules summary {
+  cursor: pointer;
+  color: #587963;
+}
+.approved-rules button {
+  margin-top: 8px;
+  font-size: 11px;
+}
+.permission-notice {
+  padding: 10px;
+  background: #eef7f1;
+  color: #427056;
+  font-size: 12px;
+}
