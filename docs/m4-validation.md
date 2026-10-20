@@ -29,7 +29,7 @@ API 認証ヘッダーや Cookie へ権限を変換しない。token は URL か
 
 ## 検証結果
 
-- Mac / Bun 1.3.14: lint、strict 型検査、全テスト、Web build、git diff --check を確認。119 テスト / 435 assertions。
+- Mac / Bun 1.3.14: lint、strict 型検査、全テスト、Web build、git diff --check を確認。119 テスト / 434 assertions。
 - 全 project エンドポイントの他 owner 拒否、子資源の別 project 拒否、Origin/Host/preflight、正常・異常入力、action / option、ページング、402 / 409、中止と SSE の tool_use / completed、許可監査・取消・自動送信なし、明示再接続をモデル不要で検証。
 - 正式リポジトリで API 18789 / Vite 15175 / 新規 `/tmp/aidlc-m4-http-data`、runner=fake を使い `bun run dev` と `bun scripts/api-smoke.ts` が成功。
 - 作成した ID: `01M5C76NFRNFN5PS4PRCPJZF8N`。公式 fresh-install → ready → 明示 start_round → succeeded → reply、履歴1件。録画費用 0.6305979 は実課金ではない。
