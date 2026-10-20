@@ -403,6 +403,16 @@ type TurnOutcome = {
 - テストと、モデルを使わない画面開発に使います。`AIDLC_APP_RUNNER=fake` で切り替えます。
 - 録画は M8 の `scripts/live-smoke.ts` で作り、秘密情報やローカルの絶対パスを伏せ字にしてから保存します。
 
+### 6.3.1 画面検証用の合成シナリオ
+
+- `AIDLC_APP_FAKE_SCENARIO=requirements` を明示した fake 起動だけで、質問・進捗・拒否・許可後の続行を合成 fixture で再生します。claude との併用は起動エラーです。
+- このモードの WorkspaceStorage は、空の外部ディレクトリへ合成成果物を初期配置します。公式 AI-DLC の導入済み workspace を改変せず、実モデルのログや成果として扱いません。
+- FakeRunner は DB の明示送信履歴を使って fixture を選びます。進捗の再生もサーバー上の履歴から返し、provision 後の `aidlc/` や `.claude/` を書き換えません。中止・失敗は進捗を進めません。
+- projects に `execution_mode`（claude / fake / unknown）と `fake_scenario`（requirements または null）を保存し、作成時と異なるモードやシナリオでの送信・再接続は 409 にします。
+  既存行は unknown として読み取りだけ許可し、推測で分類・再実行しません。SQLite migration で履歴は保持します。
+- 接続画面は health と project の実行モードを表示し、合成シナリオ・録画の費用を請求額と表示しません。claude の project では実 API の状態・進捗・推計費用だけを表示します。
+- 未接続デモは `?mode=demo`、接続画面は既定モードに分け、デモのローカル状態を API に引き継ぎません。
+
 ### 6.4 ターンの流れ（queue）
 
 1. API がターンを作ります（状態 `queued`）。同じプロジェクトに `queued` か `running` があれば 409 を返します（I2）。
@@ -706,6 +716,7 @@ type SendTurn =
 | `PORT` | `8787` | API のポート |
 | `AIDLC_APP_DATA_DIR` | `../aidlc-app-data` | DB、ワークスペース、ログ、CLI HOME の置き場。リポジトリ外に解決する |
 | `AIDLC_APP_RUNNER` | `claude` | `claude` か `fake` |
+| `AIDLC_APP_FAKE_SCENARIO` | なし | fake 専用。`requirements` で合成の画面検証シナリオを使用 |
 | `CLAUDE_BIN` | `claude` | Claude Code CLI のパス |
 | `CLAUDE_MODEL` | `sonnet` | `--model` に渡す値 |
 | `TURN_BUDGET_USD` | `5` | 1ターンの上限 |
