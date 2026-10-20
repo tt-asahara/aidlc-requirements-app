@@ -51,8 +51,10 @@ export function readConfig(
   return {
     repoRoot,
     port: readPort(env),
-    // Preserve the plan's stated default; reject it explicitly under I8 instead of silently relocating data.
-    dataDir: externalDataDir(repoRoot, text("AIDLC_APP_DATA_DIR", "./data")),
+    dataDir: externalDataDir(
+      repoRoot,
+      text("AIDLC_APP_DATA_DIR", "../aidlc-app-data"),
+    ),
     runner,
     claudeBin: text("CLAUDE_BIN", "claude"),
     claudeModel: text("CLAUDE_MODEL", "sonnet"),

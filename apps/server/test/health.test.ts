@@ -17,7 +17,7 @@ describe("M1 health API (モデル不使用)", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(await response.json()).toEqual({
       status: "ok",
-      milestone: "M1",
+      milestone: "M2",
       aidlc: { sha: TEST_SHA, ready: false },
     });
   });

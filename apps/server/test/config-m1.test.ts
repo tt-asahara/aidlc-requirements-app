@@ -35,10 +35,13 @@ describe("M1 startup settings", () => {
     }
   });
 
-  test("I8: the plan's conflicting ./data default fails explicitly", async () => {
+  test("I8: the clarified default is external; explicit ./data remains rejected", async () => {
     const f = await fixtureRoot();
     try {
-      expect(() => readConfig({}, f.repoRoot)).toThrow("I8");
+      expect(readConfig({}, f.repoRoot).dataDir).not.toStartWith(f.repoRoot);
+      expect(() =>
+        readConfig({ AIDLC_APP_DATA_DIR: "./data" }, f.repoRoot),
+      ).toThrow("I8");
     } finally {
       await f.cleanup();
     }

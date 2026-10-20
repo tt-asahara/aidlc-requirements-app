@@ -10,7 +10,7 @@ export function createApp(repoRoot: string = APP_ROOT) {
     const aidlc = readAidlcReadiness(repoRoot);
     const health: HealthResponse = {
       status: "ok",
-      milestone: "M1",
+      milestone: "M2",
       aidlc: { sha: aidlc.sha, ready: aidlc.ready },
     };
     return c.json(health);
