@@ -145,7 +145,7 @@ bun poc/d-acceleration/fresh-install.ts install --src "$SRC" --product "$PRODUCT
 - 出力先は `aidlc/spaces/<space>/design-document/` です。README にカバレッジ（記載済み、未検討、対象外の章数）が出ます。
 - 実測では、途中状態でも40ファイル、110章中62章が記載済みになりました。
 - 実測で一度、エージェントが Python スクリプトで生成しようとして拒否され、止まりました。
-  これは `aidlc-ui-poc-d` 側で修正中です（2.9）。
+  これは `aidlc-ui-poc-d` PR52 で修正されました（2.9）。
 
 ### 2.8 モックアップには Chrome が必要
 
@@ -153,13 +153,15 @@ bun poc/d-acceleration/fresh-install.ts install --src "$SRC" --product "$PRODUCT
 - ブラウザは `UI_POC_BROWSER_EXECUTABLE` で指定します。未指定なら Mac の Chrome、`/usr/bin/chromium` などを探します。
 - Docker イメージには Chromium を入れ、この環境変数を設定します。
 
-### 2.9 既知の不具合（aidlc-ui-poc-d 側で修正中）
+### 2.9 上流修正の反映（2026-10-20）
 
-- インストールされる許可リストに、モックアップ証跡に必要なハッシュ計算と `ui-poc-evidence.cjs` の実行が入っていません。
-  このため、ヘッドレスでは rough-mockups の証跡が作れず、ゲートの手前で止まります。
-- 修正は `aidlc-ui-poc-d` の別ブランチで進行中です。`develop` にマージされたら、その SHA を固定します（5.1）。
-- 修正がマージされるまでは、実モデルでの E2E は rough-mockups で止まります。
-  アプリ側で許可ルールを足して回避することはしないでください（不変条件 I5）。
+- `aidlc-ui-poc-d` [PR52](https://github.com/tt-asahara/aidlc-ui-poc-d/pull/52) は、
+  全24チェック成功・既存条件の5ジョブ対象外を確認後、`develop` にマージされました。
+- `aidlc.lock.json` は merge SHA `61da68f29914d50c0f962853d04b03df9fa3af9c` を固定します。
+- 専用 `ui-poc-evidence.cjs hash` と公式許可、Write/Edit による `--doc`、
+  core 外の D native 入口、Chrome 起動時の証跡読み取り競合の修正を含みます。
+- アプリ独自の基本許可追加・permission bypass は行いません（I4 / I5）。
+- lock 更新だけでは実モデルの1/2周・設計書統合の完了を意味しません。実測結果は `docs/operations.md` に記録します。
 
 ### 2.10 状態ファイル（読み取り専用で使う）
 
@@ -835,7 +837,7 @@ Docker Compose で起動したアプリで、次がブラウザだけででき�
 1. プロジェクトを作成できる。
 2. 要件ラウンドを始め、AI-DLC の質問に答え、各ステージを承認できる。
 3. 許可要求が出たら、画面で許可して続行できる。
-4. 1周目が refined-mockups の承認まで進む（2.9 の修正がマージされていることが前提）。
+4. 1周目が refined-mockups の承認まで進む（2.9 の固定 SHA を公式導入して使う）。
 5. 「設計書を更新」で `/aidlc --doc` を実行し、設計書を画面で読める。
 6. 2周目を始め（AI-DLC の質問で「2」を選ぶ）、完了させ、再度設計書を更新すると、2周目の要件が設計書に加わる。
 7. 設計書と全成果物を ZIP でダウンロードできる。
@@ -843,13 +845,13 @@ Docker Compose で起動したアプリで、次がブラウザだけででき�
 9. CI が緑で、I1〜I9 のテストがある。
 
 4 と 6 は実モデルでの確認です。結果（費用、ターン数、止まった箇所）を `docs/operations.md` に記録してください。
-2.9 の修正が間に合わない場合は、rough-mockups で止まることを記録し、4 と 6 は保留として報告してください。
+上流の修正が入っていても、実測で止まった箇所と未検証を記録し、4 と 6 を完了と報告しないでください。
 
 ---
 
 ## 16. リスクと未確定事項
 
-- **2.9 の修正待ち**: マージまで実モデルの E2E は rough-mockups で止まります。
+- **2.9 の実測**: 修正 SHA は固定済みですが、実モデルの全ラウンドと設計書統合は実測が必要です。
 - **resume による費用の増加**: 周を重ねるほど文脈が伸びます。ターン費用を記録し、傾向を `docs/operations.md` に残してください。
   対策（周ごとにセッションを切り替えるなど）はフェーズ2で検討します。勝手に切り替えないでください（2.3）。
 - **README の記述とのずれ**: `ui-poc-requirements` の説明では「基本設計の章は未検討のまま」ですが、
