@@ -142,7 +142,14 @@ export class TurnManager {
           id: turn.id,
           seq: turn.seq,
         });
-      if (signal.aborted) throw new Error("Cancelled before CLI started");
+      if (signal.aborted) {
+        this.store.finishTurn(turn.id, {
+          ...failedOutcome("Cancelled before CLI started", "cancelled"),
+          sessionCostUsd: 0,
+          numTurns: 0,
+        });
+        return;
+      }
       invoked = true;
       const outcome = await this.runner.run(
         {
@@ -180,9 +187,13 @@ export class TurnManager {
       // No settings, prompt, credentials or command details in this diagnostic.
       this.store.finishTurn(turn.id, {
         ...failedOutcome(
-          error instanceof Error && error.message.startsWith("CONTEXT_STALE")
-            ? error.message
-            : "Turn execution failed; inspect the redacted turn log",
+          !invoked && signal.aborted
+            ? "Cancelled before CLI started"
+            : error instanceof Error &&
+                error.message.startsWith("CONTEXT_STALE")
+              ? error.message
+              : "Turn execution failed; inspect the redacted turn log",
+          !invoked && signal.aborted ? "cancelled" : "failed",
         ),
         ...(invoked ? {} : { sessionCostUsd: 0, numTurns: 0 }),
       });

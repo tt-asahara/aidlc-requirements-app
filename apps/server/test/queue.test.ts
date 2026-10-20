@@ -444,3 +444,69 @@ test("V2 pre-CLI stale releases only its reservation and preserves cumulative 5 
     reservedUsd: 0,
   });
 });
+
+test("cancel during delayed context read finishes cancelled without CLI cost and keeps earlier reservations", async () => {
+  const f = await setup();
+  const first = f.store.admitTurn(f.input(), f.limits);
+  f.store.markRunning(first.id);
+  f.store.finishTurn(first.id, success(5));
+  const unknown = f.store.admitTurn(f.input(), f.limits);
+  f.store.markRunning(unknown.id);
+  f.store.finishTurn(unknown.id, failedOutcome("unknown cost"));
+  let calls = 0;
+  const queue = f.manager({
+    run: async () => {
+      calls++;
+      return success(7);
+    },
+  });
+  const { spyOn } = await import("bun:test");
+  const context = await import("../src/reader/context.ts");
+  const original = context.validateContext;
+  let started = () => {};
+  let release = () => {};
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const spy = spyOn(context, "validateContext").mockImplementation(
+    async (...args) => {
+      started();
+      await held;
+      await original(...args);
+    },
+  );
+  try {
+    const turn = queue.submit({
+      ...f.input(),
+      expectedContext: {
+        space: "default",
+        activeIntent: null,
+        currentStage: null,
+        latestTurn: { id: unknown.id, seq: unknown.seq },
+      },
+    });
+    await entered;
+    expect(queue.cancel(turn.id)).toBe(true);
+    release();
+    await queue.wait(turn.id);
+    expect(calls).toBe(0);
+    expect(f.store.getTurn(turn.id)).toMatchObject({
+      status: "cancelled",
+      sessionCostUsd: null,
+      turnCostUsd: 0,
+      reservedCostUsd: 0,
+      numTurns: 0,
+    });
+    expect(f.store.projectCosts("p1")).toEqual({
+      reportedUsd: 5,
+      reservedUsd: 5,
+    });
+    expect(f.store.getTurn(unknown.id)?.reservedCostUsd).toBe(5);
+  } finally {
+    release();
+    spy.mockRestore();
+  }
+});
