@@ -124,9 +124,17 @@ describe("M2 process boundary (fake executable only)", () => {
       AIDLC_UNATTENDED: "1",
       NODE_OPTIONS: "bad",
       AWS_PROFILE: "default",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "jp.anthropic.claude-sonnet-4-6",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "jp.anthropic.claude-sonnet-4-6",
       AWS_SECRET_ACCESS_KEY: "synthetic-secret-value",
     });
     expect(env.HOME).toBe(input.claudeHomeDir);
+    expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe(
+      "jp.anthropic.claude-sonnet-4-6",
+    );
+    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe(
+      "jp.anthropic.claude-sonnet-4-6",
+    );
     expect(env.AWS_SHARED_CREDENTIALS_FILE).toBe(
       join(root, ".aws/credentials"),
     );

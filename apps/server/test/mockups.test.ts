@@ -166,3 +166,63 @@ test("contract paths and strict control metadata reject malformed inputs", () =>
   ])
     expect(() => parseExpectedContext(context)).toThrow();
 });
+
+test("contract replaced during asset reads is reported as mismatched", async () => {
+  const f = await fixture();
+  const { spyOn } = await import("bun:test");
+  const artifacts = await import("../src/reader/artifacts.ts");
+  const original = artifacts.readArtifact;
+  let replaced = false;
+  const spy = spyOn(artifacts, "readArtifact").mockImplementation(
+    async (...args) => {
+      const bytes = await original(...args);
+      if (!replaced && args[2].endsWith("shared.html")) {
+        replaced = true;
+        await writeFile(
+          f.path,
+          markdown({ ...contract(), note: "external editor update" }),
+        );
+      }
+      return bytes;
+    },
+  );
+  try {
+    expect((await readMockups(f.root, "round-1")).contracts[1]?.integrity).toBe(
+      "mismatched",
+    );
+    expect(replaced).toBe(true);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("aggregate bytes and mapping count are bounded independently of per-file limits", async () => {
+  const f = await fixture();
+  const bytes = new Uint8Array(2 * 1024 * 1024).fill(32);
+  const assets = [];
+  for (let i = 0; i < 5; i++) {
+    const path = `assets/${i}.html`;
+    await writeFile(join(f.dir, path), bytes);
+    assets.push({ path, sha256: hashBytes(bytes) });
+  }
+  await writeFile(
+    f.path,
+    markdown({
+      ...contract(),
+      assets,
+      mappings: [mapping("large", "AC1.1.1", "assets/0.html")],
+    }),
+  );
+  await expect(readMockups(f.root, "round-1")).rejects.toMatchObject({
+    status: 413,
+  });
+  expect(() =>
+    parseContract(
+      markdown({
+        ...contract(),
+        mappings: Array(513).fill(mapping("too-many")),
+      }),
+      "refined-mockups",
+    ),
+  ).toThrow();
+});

@@ -420,9 +420,9 @@ test("V2 pre-CLI stale releases only its reservation and preserves cumulative 5 
     currentStage: null,
     latestTurn: { id: pending.id, seq: pending.seq },
   };
-  const stale = queue.submit({ ...f.input(), expectedContext });
   await mkdir(join(f.workspace, "aidlc"), { recursive: true });
   await writeFile(join(f.workspace, "aidlc/active-space"), "changed");
+  const stale = queue.submit({ ...f.input(), expectedContext });
   await queue.wait(stale.id);
   expect(calls).toBe(0);
   expect(f.store.getTurn(stale.id)).toMatchObject({

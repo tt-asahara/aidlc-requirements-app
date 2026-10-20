@@ -647,7 +647,9 @@ function ProjectScreen({
         </small>
         <small>
           接続準備:{" "}
-          {compatible && health?.aidlc.ready ? "準備完了" : "確認が必要"}
+          {compatible && (health?.runner === "fake" || health?.aidlc.ready)
+            ? "準備完了"
+            : "確認が必要"}
         </small>
         <span
           role="status"
@@ -986,6 +988,9 @@ function ProjectScreen({
             draftContexts.set(lockKey, structuredClone(context));
             setDraft(text);
             setRegion("conversation");
+            requestAnimationFrame(() =>
+              document.getElementById("reply-input")?.focus(),
+            );
           }}
         />
       </main>

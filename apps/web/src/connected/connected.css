@@ -847,3 +847,26 @@
     scroll-behavior: auto;
   }
 }
+@media (min-width: 1101px) {
+  .connected-workspace.v2-workspace {
+    height: calc(100dvh - 186px);
+    min-height: 600px;
+  }
+  .v2-workspace .conversation-pane {
+    height: 100%;
+    overflow: hidden;
+  }
+  .v2-workspace .progress-pane {
+    flex-shrink: 0;
+    max-height: 35%;
+    overflow: auto;
+  }
+  .v2-workspace .connected-composer {
+    flex-shrink: 0;
+  }
+  .v2-workspace .mockup-main,
+  .v2-workspace .document-nav {
+    max-height: 100%;
+    overflow: auto;
+  }
+}
