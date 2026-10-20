@@ -158,7 +158,7 @@ test("late approval stays scoped to the original project and a different owner c
   await page.getByRole("dialog").getByRole("textbox").fill("M7 移動後 B");
   await page.getByRole("button", { name: "作成する", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "M7 移動後 B", exact: true }),
+    page.getByRole("heading", { name: "M7 移動後 B", level: 1, exact: true }),
   ).toBeVisible();
   finish();
   await expect(page.getByLabel("返答", { exact: true })).toHaveValue("");
@@ -167,10 +167,7 @@ test("late approval stays scoped to the original project and a different owner c
     .getByRole("button", { name: "← プロジェクト一覧", exact: true })
     .click();
   await page
-    .locator(".project-card")
-    .filter({
-      has: page.getByRole("heading", { name: "M7 移動前 A", exact: true }),
-    })
+    .getByTestId(`project-${new URL(a).searchParams.get("project")}`)
     .click();
   await expect(page.getByLabel("返答", { exact: true })).toHaveValue(
     "承認したコマンドを実行して続けてください",

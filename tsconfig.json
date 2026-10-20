@@ -22,6 +22,6 @@
     "apps/**/*.tsx",
     "packages/**/*.ts",
     "scripts/**/*.ts",
-    "playwright.config.ts"
+    "playwright*.config.ts"
   ]
 }

@@ -41,6 +41,14 @@ export function readConfig(
     return value;
   };
   const runner = text("AIDLC_APP_RUNNER", "claude");
+  const bindAddress = env.AIDLC_APP_BIND_ADDRESS ?? "127.0.0.1";
+  if (bindAddress !== "127.0.0.1" && bindAddress !== "0.0.0.0")
+    throw new Error("AIDLC_APP_BIND_ADDRESS must be 127.0.0.1 or 0.0.0.0");
+  if (
+    env.AIDLC_APP_SERVE_WEB !== undefined &&
+    !["0", "1"].includes(env.AIDLC_APP_SERVE_WEB)
+  )
+    throw new Error("AIDLC_APP_SERVE_WEB must be 0 or 1");
   if (runner !== "claude" && runner !== "fake")
     throw new Error("AIDLC_APP_RUNNER must be claude or fake");
   const fakeScenario = env.AIDLC_APP_FAKE_SCENARIO || null;
@@ -59,6 +67,8 @@ export function readConfig(
   return {
     repoRoot,
     port: readPort(env),
+    bindAddress,
+    serveWeb: env.AIDLC_APP_SERVE_WEB === "1",
     webPort: readPort({ PORT: env.WEB_PORT ?? "5173" }),
     dataDir: externalDataDir(
       repoRoot,

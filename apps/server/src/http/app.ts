@@ -4,6 +4,7 @@ import { APP_ROOT } from "../config";
 import { readAidlcReadiness } from "../workspace/aidlc";
 import { type ApiDependencies, projectRoutes } from "./routes.ts";
 import { isLocalRequest } from "./security.ts";
+import { webRoutes } from "./web.ts";
 
 export function createApp(repoRoot: string = APP_ROOT, deps?: ApiDependencies) {
   const app = new Hono();
@@ -20,7 +21,7 @@ export function createApp(repoRoot: string = APP_ROOT, deps?: ApiDependencies) {
     const aidlc = readAidlcReadiness(repoRoot);
     const health: HealthResponse = {
       status: "ok",
-      milestone: deps ? "M7" : "M3",
+      milestone: deps ? "M8" : "M3",
       aidlc: { sha: aidlc.sha, ready: aidlc.ready },
     };
     if (deps) {
@@ -30,6 +31,7 @@ export function createApp(repoRoot: string = APP_ROOT, deps?: ApiDependencies) {
     return c.json(health);
   });
 
+  if (deps?.config.serveWeb) app.route("/", webRoutes(repoRoot));
   if (deps) app.route("/", projectRoutes(deps));
 
   app.notFound((c) => c.json({ error: "見つかりません。" }, 404));

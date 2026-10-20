@@ -6,10 +6,15 @@ export async function create(page: Page, name: string) {
     .click();
   await page.getByRole("dialog").getByRole("textbox").fill(name);
   await page.getByRole("button", { name: "作成する", exact: true }).click();
-  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name, level: 1, exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "新しい要件ラウンド", exact: true }),
   ).toBeEnabled();
+  const id = new URL(page.url()).searchParams.get("project");
+  if (!id) throw new Error("Created project ID missing");
+  return id;
 }
 export async function start(page: Page) {
   await page

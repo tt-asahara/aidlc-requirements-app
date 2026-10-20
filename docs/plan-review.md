@@ -46,3 +46,10 @@ M4 の runner はサーバー設定だけで切り替わるため、DB を再利
 M5 実装前に project のモードを永続化し、旧行は unknown・異なる実行設定は拒否する設計を追加した。
 ブラウザの一連の検証には拒否や進捗を含む明示的な合成 fixture を使う。AI-DLC 状態ファイルへのアプリによる進捗書込みは行わない。
 合成 project は初期配置した fixture と DB 履歴で再生し、実 project と区別する。未接続 DEMO の client state は再利用しない。
+
+## M8 の到達点
+
+料金照合は公式のAmazonBedrockFoundationModels東京データとM1実ログで完了し、仮予約を精算した。請求の確定は未反映として区別する。
+DockerのPID再利用に対応し、runtimeの多重起動をSQLite OS leaseでも防ぐ。基本認可・許可を広げる変更はない。
+上流developは固定SHAのままで証跡許可が不足している。さらにコンテナ内Chromiumのnamespace作成は既存Docker制限で拒否された。
+追加権限やsandbox無効化で回避せず、実1/2周と実doc統合は保留としてoperationsに記録する。
