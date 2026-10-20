@@ -2,7 +2,7 @@ export type HealthResponse = {
   status: "ok";
   runner?: "fake" | "claude";
   fakeScenario?: "requirements" | null;
-  milestone: "M0" | "M1" | "M2" | "M3" | "M4" | "M5";
+  milestone: "M0" | "M1" | "M2" | "M3" | "M4" | "M5" | "M6";
   aidlc: {
     sha: string | null;
     ready: boolean;
