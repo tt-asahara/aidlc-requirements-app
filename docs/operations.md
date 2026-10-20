@@ -91,19 +91,50 @@ awsBillReconciled=false、priceUsageReconciled=trueを区別する。根拠の�
 | 1 project作成 | 実測済み（合成）、公式導入はM1実測 | 画面→API→外部workspace |
 | 2 質問・返答・stage承認 | 合成で実測、実モデル全stageは未検証 | M1は質問提示まで |
 | 3 許可・続行 | 合成で実測済み | 拒否・許可・取消・手動再送。複雑構文は許可不可 |
-| 4 実1周目refined-mockups | ブロック | 上流のhash/evidence許可未修正 |
+| 4 実1周目refined-mockups | ブロック | 上流hash/evidence修正PR #52が未マージ |
 | 5 実設計書更新・閲覧 | 合成のAPI/閲覧は実測、実doc生成は未検証 | 実生成成功は主張しない |
 | 6 実2周目・統合 | ブロック | 4と同じ上流前提 |
 | 7 ZIP | 実測済み（合成workspace） | 設計書/全成果物、除外・パス境界 |
 | 8 費用・project上限 | 合成/結合で実測済み | session差分はM1実測。厳密なAWS遮断ではない |
-| 9 CI・I1〜I9 | M0〜M7成功、M8は今回のPR/CIで確認 | モデル未使用 |
+| 9 CI・I1〜I9 | M0〜M8成功（main c2bfcc9、CI 39410383278） | 追加検証候補は上流CI解決待ち。モデル未使用 |
 
-developをgit ls-remoteで確認し、lockと同じbb4754a9a9e030c691e0c4b0082eb3914406f535だった。lock更新や上流への編集・アプリでの許可回避はしない。
-コンテナ内Chromiumの実描画は、標準chromium-sandbox導入後もnamespace作成がOperation not permittedで拒否された。sandboxを無効化せず、privileged / seccomp変更も行っていない。
-これはホストブラウザからのFakeRunner/HTML表示とは別の制限で、実モデルのコンテナ内証跡生成にも残る。再開には上流修正に加え、Chromiumに必要なnamespaceを許す限定的な実行設定のレビュー・承認が必要。
+初回M8時はdevelopをgit ls-remoteで確認し、lockと同じbb4754a9a9e030c691e0c4b0082eb3914406f535だった。その時点ではlock更新や上流への編集・アプリでの許可回避をしていない。
+初回のコンテナ内Chromium実描画は、標準chromium-sandbox導入後もnamespace作成がOperation not permittedで拒否された。その時点でsandbox無効化・privileged・seccomp変更はしていない。
+これはホストブラウザからのFakeRunner/HTML表示とは別の制限である。その後に承認された限定設定の検証結果は、下の「M8追加検証」に記録する。通常Composeの制限は変更していない。
 料金照合ができても既知の障害へ有料で進める再実行は行わない。フェーズ1全体の完了とは報告しない。
 
 ## トラブル対応
+
+### M8 追加検証（2026-10-20、モデル呼び出しなし）
+
+初回M8後、承認された検証専用コンテナ `aidlc-browser-validation` 1個だけに、
+現行Rancher Desktop/Mobyのseccompへ `clone` / `setns` / `unshare` の許可を追加した。
+全既存ルール・default deny・非root・ブラウザsandboxを保持し、追加capabilityはない。
+通常Composeと既存15176 / 15178 / 5274へは適用していない。
+適用範囲・元設定のハッシュは `security/README.md` と `seccomp-provenance.json` を参照。
+これは対象コンテナの全プロセスへ適用される追加許可であり、一般配布の既定設定ではない。
+
+`fonts-noto-cjk` を含む検証イメージで公式 `ui-poc-fidelity.cjs capture` が成功
+（1 capture / PNGあり）。日本語「架空メモ」「追加する」の描画を目視確認した。
+snapshot SHA-256: `b240c87b3287eb7e2e64d9b1a1c1704b83f5c9c75e844f9628b9a09c65e9ea48`。
+15180のFakeRunnerで成果物・ZIP・sandbox境界、許可/拒否/取消/手動再送、連打・再接続・中止・送信失敗の6 E2Eが成功した。
+この検証用構成のdevユーザーは1名なので、別所有者を使う3 E2Eはこの実行に含めず、初回M8の9件成功と区別する。
+
+上流修正候補 [PR #52](https://github.com/tt-asahara/aidlc-ui-poc-d/pull/52)
+の `d57a553d` を公式fresh-installで一時ワークスペースへ導入し、インストール済みの
+`ui-poc-evidence.cjs hash .claude/d-install-receipt.json` の結果を独立SHA-256と照合して成功した。
+これは候補の無課金検証であり、未マージSHAへアプリlockを更新した結果ではない。
+アプリは基本許可に独自ルールを追加していない。
+
+PR #52のt145 packaging fixtureへDのソースコピーを追加し、13 tests / 59 assertions、型検査・対象lintが成功した。
+ただし標準CIにはhash修正以前からあるD/native配布の不整合が残る。
+例: `dist-release/claude/.claude/settings.json` にD hookのBun直接呼び出しが残り、
+native版のBun不要・dispatcher経由実行という契約を満たさない。
+`t-native-install-hooks` / `t-claude-hook-project-root` / `t219-claude-project-dir-quoting` が検出する。
+Dの `poc/d-acceleration/README.md` はcoreをbyte-identicalに保つことも要求するため、
+native配布でのDの実行境界を解決する必要がある。テスト除外・期待値緩和で回避しない。
+上流の全チェック成功・マージまではアプリlock更新、実1/2周・実設計書統合を保留する。
+追加モデル費用0 USD。既計上上限1.11 USD、総額承認1000 USDは変更しない。
 
 M8ローカル検証: lint / strict typecheck / 141テスト（509 assertions）/ Web build、開発配信とDocker配信の各9 E2Eを確認する。
 Dockerの公式導入preflightはmodelUsed=false・送信0で上流許可不足を検出した。

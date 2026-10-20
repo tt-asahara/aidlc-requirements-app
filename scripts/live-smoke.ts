@@ -8,6 +8,7 @@ import { createRuntime } from "../apps/server/src/runtime.ts";
 import { requireAidlcReady } from "../apps/server/src/workspace/aidlc.ts";
 import { externalDataDir } from "../apps/server/src/workspace/paths.ts";
 import type { PublicTurn, SendTurn } from "../packages/shared/src/index.ts";
+import { evidencePreflight } from "./evidence-preflight.ts";
 
 export type SmokeOptions = {
   mode: "fake" | "claude";
@@ -190,19 +191,9 @@ export async function runSmoke(options: SmokeOptions) {
         "Smoke provisioning failed; inspect the private project record",
       );
     if (options.mode === "claude") {
-      const settings = JSON.parse(
-        await readFile(
-          join(installed.workspaceDir, ".claude/settings.json"),
-          "utf8",
-        ),
-      );
-      const rules: string[] = settings.permissions?.allow ?? [];
-      if (
-        !rules.some((rule) => rule.includes("ui-poc-evidence.cjs")) ||
-        !rules.some((rule) => /shasum|sha256sum/.test(rule))
-      ) {
+      if (!(await evidencePreflight(installed.workspaceDir))) {
         summary.blocked =
-          "Upstream hash/evidence permissions are absent; no model turn submitted";
+          "Installed dedicated evidence hash is unavailable or unapproved; no model turn submitted";
         return summary;
       }
     }

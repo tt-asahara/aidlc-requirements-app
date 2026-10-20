@@ -1,0 +1,22 @@
+name: aidlc-validation
+services:
+  validation:
+    build: .
+    image: aidlc-browser-validation:local
+    container_name: aidlc-browser-validation
+    init: true
+    user: bun
+    security_opt:
+      - seccomp=./security/chromium-validation-seccomp.json
+    ports:
+      - "127.0.0.1:15180:8787"
+    environment:
+      WEB_PORT: "15180"
+      AIDLC_APP_RUNNER: fake
+      AIDLC_APP_FAKE_SCENARIO: requirements
+      AIDLC_APP_DEV_USERS: dev
+    volumes:
+      - validation-data:/var/lib/aidlc-app
+    stop_grace_period: 30s
+volumes:
+  validation-data:
