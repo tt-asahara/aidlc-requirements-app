@@ -31,3 +31,11 @@ CSP と Origin/Host 制限は権限を狭めるためのもので、フェーズ
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy （no-referrer）
 
 この設計を先にマージし、M3 は reader と capability の純粋処理、M4 は HTTP 認可と配信を実装する。実モデルは使わない。
+
+## M4 前の追加許可 API の上限
+
+Claude Code の公式 permission 文書は、Bash の wildcard なしルールを完全一致、ToolName 単独を全入力許可と説明している。
+そのため非 Bash を ToolName だけで approve する計画7.1は I5 と矛盾する。M4 実装前に、表現できない証跡は 422 として許可を広げない方針を明記した。
+単純な Bash の文字列一致だけを認め、メタ文字・引用・展開・複合コマンドは保留する。CLI バージョンを固定した後工程の照合が必要で、shell / OS の隔離機能とは扱わない。
+根拠: https://code.claude.com/docs/en/permissions#permission-rule-syntax
+ヘッダー開発認証に合わせ SSE は fetch stream とし、Cookie や query token 認証を増設しない。
