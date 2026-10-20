@@ -1,10 +1,10 @@
-# アーキテクチャ（M4）
+# アーキテクチャ（M8）
 
 ## 現在の到達点
 
 M0 / M1 とフロント単独デモは main に統合済み。M2 で `Store` / `SqliteStore` と `TurnRunner` / `ClaudeCliRunner` / `FakeRunner`、ターン管理を実装した。
-M3 の reader と M4 の全 API・開発用 `AuthProvider` を追加した。画面は未接続 DEMO のままで、接続は M5 で行う。
-デモの会話・許可・進捗はローカルの表示用データで、実際のターンへ送られない。
+M3 の reader、M4 の全 API・開発用 AuthProvider、M5 の会話・進捗、M6 の成果物・ZIP、M7 の許可中継を実装済み。
+既定画面は API 接続、未接続 DEMO は ?mode=demo。実モデル・録画・明示した合成シナリオの project モードを保存し、異なるモードでは閲覧だけにする。
 
 `WorkspaceStorage` は既存のローカル実装を保持する。追加のサービス抽象化や Agent SDK は使用していない。
 SQLite は手書き migration を transaction で適用し、FK / WAL と queued・running の部分ユニークインデックスで整合性を守る。
@@ -72,4 +72,14 @@ stdout / stderr はファイルに保存せず、最大 64 KiB の末尾を読�
 
 テストの入力は明示した合成データで、実モデルの録画や実物の状態ファイルとして扱わない。
 この表は過去の記録であり、CLI と状態 fixture のゲートは `cli-spike.md` の実測で解消した。
-完全一致許可の表現、HTML sandbox と token の境界は保留。追加課金は予算台帳の予約精算と残枠の確認後とし、M2 はモデルを使わず進める。
+この段落は M1 当時の記録。現在の追加許可は単純な完全一致 Bash のみで、複雑な構文を広い許可へ変換しない。HTML の境界は M3/M6 validation、予算精算は operations を参照。
+
+## Docker と現在の実行境界
+
+Docker は Bun / Node / 固定 Claude CLI / Git / Chromium と固定上流を含み、UID1000で起動する。既定 Compose は認証情報なしの合成モード。
+内部だけ0.0.0.0で待ち受け、ホスト公開は127.0.0.1:15178に限定する。既存の Host / Origin / owner 検査を維持する。
+ビルド済み画面の / と flat な /assets/ のみを認証不要で配信し、APIやソースへの SPA fallback は作らない。
+SQLite の OS lease を lifetime 中保持し、コンテナ再起動で PID が再利用されても多重起動を拒否する。旧形式の marker は旧プロセスの終了確認後に回収する。
+CLI process lease が未解決の場合は新しい実行を止める。異なる PID namespace の強制終了後は operations の手動確認手順を使う。
+live-smoke はサーバーから import しない開発専用プログラム。明示した台本・費用・回数制限で動き、拒否・失敗・不明費用で停止する。
+上流の hash/evidence 許可が不足している場合はモデルを呼ぶ前に停止し、アプリ側で許可を追加しない。
