@@ -171,3 +171,71 @@ test("V2 mobile region navigation, Japanese IME, keyboard and 200 percent zoom p
     fullPage: true,
   });
 });
+
+test("V2 historical mockups are read only while reopen targets the current execution round", async ({
+  page,
+}) => {
+  await create(page, "V2 過去資料と現在の再作業");
+  await start(page);
+  await page
+    .getByRole("button", { name: "1. 個人用で進める", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "1. このスコープを承認する", exact: true })
+    .click();
+  const git = page
+    .locator(".permission-card")
+    .filter({ has: page.locator("pre", { hasText: /^git status$/ }) });
+  await git.getByRole("button", { name: "許可", exact: true }).click();
+  await expect(page.getByLabel("返答", { exact: true })).toHaveValue(
+    "承認したコマンドを実行して続けてください",
+  );
+  await page.getByRole("button", { name: "送信", exact: true }).click();
+  await expect(
+    page.locator('.stage-list li[data-mark="x"]').last(),
+  ).toContainText("refined-mockups");
+  await page
+    .getByRole("button", { name: "新しい要件ラウンド", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("textbox")
+    .fill("別の新しい条件を検討します");
+  await page
+    .getByRole("button", { name: "ラウンドを開始", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "2. 別の新しい作業", exact: true })
+    .click();
+  await expect(page.locator(".project-bar")).toContainText("fixture-round-2");
+  const viewed = page.getByRole("combobox", {
+    name: "閲覧ラウンド",
+    exact: true,
+  });
+  await viewed.selectOption("fixture-round-1");
+  await page.getByRole("button", { name: "2.5 refined", exact: true }).click();
+  await expect(page.locator('iframe[title="HTML モックアップ"]')).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "この画面について相談", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText(
+      "過去ラウンドは閲覧専用です。新しい要件への引用は、返答欄に参照元を明記してください。",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  const outgoing = page.waitForRequest(
+    (r) => r.method() === "POST" && /\/turns$/.test(new URL(r.url()).pathname),
+  );
+  await page
+    .getByRole("button", { name: "要件を開き直す", exact: true })
+    .click();
+  const body = (await outgoing).postDataJSON();
+  expect(body.action).toBe("reopen_requirements");
+  expect(body.expectedContext.activeIntent).toBe("fixture-round-2");
+  await expect(page.getByTestId("turn-7")).toContainText("完了");
+  await expect(viewed).toHaveValue("fixture-round-1");
+  await expect(page.locator(".project-bar")).toContainText(
+    "fixture-round-2 / requirements-analysis",
+  );
+});

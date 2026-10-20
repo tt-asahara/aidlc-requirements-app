@@ -17,14 +17,16 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    launchOptions:
-      process.platform === "darwin"
+    launchOptions: {
+      chromiumSandbox: true,
+      ...(process.platform === "darwin"
         ? {
             executablePath:
               process.env.UI_POC_BROWSER_EXECUTABLE ??
               "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
           }
-        : {},
+        : {}),
+    },
   },
   webServer: [
     {

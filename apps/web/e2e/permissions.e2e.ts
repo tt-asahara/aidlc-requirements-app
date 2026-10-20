@@ -186,3 +186,44 @@ test("late approval stays scoped to the original project and a different owner c
     page.getByRole("heading", { name: "M7 移動前 A", exact: true }),
   ).toHaveCount(0);
 });
+
+test("late approval draft keeps the original cursor when another tab finishes a newer turn", async ({
+  page,
+  context,
+}) => {
+  const { git } = await denied(page, "V2 許可中の別タブ更新");
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/permissions/*/approve", async (route) => {
+    const response = await route.fetch();
+    await held;
+    await route.fulfill({ response });
+  });
+  await git.getByRole("button", { name: "許可", exact: true }).click();
+  const other = await context.newPage();
+  await other.goto(page.url());
+  await other.getByLabel("返答", { exact: true }).fill("別タブの明示した続行");
+  await other.getByRole("button", { name: "送信", exact: true }).click();
+  await expect(other.getByTestId("turn-4")).toContainText("完了");
+  release();
+  await expect(page.getByLabel("返答", { exact: true })).toHaveValue(
+    "承認したコマンドを実行して続けてください",
+  );
+  await expect(
+    page.getByRole("button", { name: "送信", exact: true }),
+  ).toBeEnabled();
+  const result = page.waitForResponse(
+    (r) =>
+      r.request().method() === "POST" &&
+      /\/turns$/.test(new URL(r.url()).pathname),
+  );
+  await page.getByRole("button", { name: "送信", exact: true }).click();
+  expect((await result).status()).toBe(409);
+  await expect(page.getByLabel("返答", { exact: true })).toHaveValue(
+    "承認したコマンドを実行して続けてください",
+  );
+  await expect(page.getByTestId("turn-5")).toHaveCount(0);
+  await other.close();
+});

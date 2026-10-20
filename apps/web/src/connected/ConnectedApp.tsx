@@ -305,6 +305,12 @@ export function ConnectedApp() {
                       ? "記録値（モード不明）"
                       : "推計費用"}{" "}
                   {money(project.cost.reportedUsd)}
+                  {project.cost.reservedUsd > 0 && (
+                    <small>
+                      {" "}
+                      · 未確定分あり（予約 {money(project.cost.reservedUsd)}）
+                    </small>
+                  )}
                 </p>
               </button>
             ))}
@@ -329,11 +335,14 @@ export function ConnectedApp() {
               [draftKey]: { text: value, permissionRequestId: null },
             }))
           }
-          insertPermissionDraft={(id, replace) =>
-            setDrafts((old) => ({
-              ...old,
-              [draftKey]: permissionDraft(old[draftKey], id, replace),
-            }))
+          insertPermissionDraft={(id, replace, context) =>
+            setDrafts((old) => {
+              const previous = old[draftKey];
+              const next = permissionDraft(previous, id, replace);
+              if (next !== previous && context)
+                draftContexts.current.set(draftKey, structuredClone(context));
+              return { ...old, [draftKey]: next };
+            })
           }
           revokePermissionDraft={(id) =>
             setDrafts((old) => {
@@ -390,7 +399,11 @@ function ProjectScreen({
   back: () => void;
   draft: string;
   setDraft: (value: string) => void;
-  insertPermissionDraft: (id: string, replace?: boolean) => void;
+  insertPermissionDraft: (
+    id: string,
+    replace?: boolean,
+    context?: ExpectedContext,
+  ) => void;
   revokePermissionDraft: (id: string) => void;
   locks: Map<string, string>;
   draftContexts: Map<string, ExpectedContext>;
@@ -470,9 +483,14 @@ function ProjectScreen({
     user,
     projectId: project.id,
     ready: project.status === "ready",
-    compatible,
+    compatible: compatible && !!execution.data && !execution.error,
     locks,
-    insertDraft: insertPermissionDraft,
+    insertDraft: (id, replace) =>
+      insertPermissionDraft(
+        id,
+        replace,
+        execution.data ? structuredClone(execution.data) : undefined,
+      ),
     revokeDraft: revokePermissionDraft,
   });
   const canSend =
@@ -544,9 +562,7 @@ function ProjectScreen({
   }, [project.id, target, user, refresh]);
   useEffect(() => {
     if (!draft) draftContexts.delete(lockKey);
-    else if (!draftContexts.has(lockKey) && execution.data)
-      draftContexts.set(lockKey, structuredClone(execution.data));
-  }, [draft, draftContexts, lockKey, execution.data]);
+  }, [draft, draftContexts, lockKey]);
   const openFile = (path: string) => {
     setSelectedFile(path);
     setRegion("mockup");
@@ -555,6 +571,12 @@ function ProjectScreen({
   latestDraft.current = draft;
   const send = async (input: SendTurn, clearDraft = false) => {
     if (!canSend || locks.has(lockKey)) return;
+    if (input.origin === "typed" && !draftContexts.has(lockKey)) {
+      setError(
+        "下書きの対象を確認できません。本文を保持して、対象を選び直してください。",
+      );
+      return;
+    }
     locks.set(lockKey, "sending");
     setSubmitted("sending");
     setSending(true);
@@ -573,7 +595,7 @@ function ProjectScreen({
               : {}),
             expectedContext:
               input.origin === "typed"
-                ? (draftContexts.get(lockKey) ?? execution.data)
+                ? draftContexts.get(lockKey)
                 : input.origin === "action" && input.action === "start_round"
                   ? roundContext.current
                   : execution.data,
@@ -675,7 +697,7 @@ function ProjectScreen({
               : "推計費用"}{" "}
           {money(project.cost.reportedUsd)}
           {project.cost.reservedUsd > 0 &&
-            ` / 予約 ${money(project.cost.reservedUsd)}`}
+            ` / 未確定分あり・予約 ${money(project.cost.reservedUsd)}`}
         </small>
       </div>
       {!compatible && (
@@ -969,12 +991,17 @@ function ProjectScreen({
               }}
               placeholder="番号または返答を入力…"
             />
+            {draft.length > 20_000 && (
+              <p role="alert">
+                下書きが20,000文字を超えています。内容を確認して編集してください。
+              </p>
+            )}
             <div>
               <small>{draft.length.toLocaleString()} / 20,000</small>
               <button
                 type="submit"
                 className="primary"
-                disabled={!canSend || !draft.trim()}
+                disabled={!canSend || !draft.trim() || draft.length > 20_000}
               >
                 送信
               </button>
