@@ -109,7 +109,14 @@ export class ClaudeCliRunner implements TurnRunner {
         const deadline = Date.now() + this.killGraceMs;
         while (groupExists(pid) && Date.now() < deadline)
           await Bun.sleep(Math.min(25, this.killGraceMs));
-        if (groupExists(pid)) killGroup(pid, "SIGKILL");
+        if (groupExists(pid)) {
+          killGroup(pid, "SIGKILL");
+          // Delivery and orphan reaping are asynchronous, especially on Linux.
+          const reapedBy = Date.now() + 1_000;
+          while (groupExists(pid) && Date.now() < reapedBy) await Bun.sleep(10);
+          if (groupExists(pid))
+            throw new Error("CLI process group did not exit after SIGKILL");
+        }
       })();
     };
     const cancel = () => {
