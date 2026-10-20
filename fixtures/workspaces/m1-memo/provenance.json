@@ -1,0 +1,15 @@
+{
+  "origin": "Actual M1 Bedrock test workspace; synthetic memo requirements only",
+  "aidlcSha": "bb4754a9a9e030c691e0c4b0082eb3914406f535",
+  "claudeVersion": "2.1.304",
+  "model": "jp.anthropic.claude-sonnet-4-6",
+  "recordedDate": "2026-10-20",
+  "originalStateSha256": "72c80f493b3ad3b299b2f4c86eaae2597bb22e17e964c06002037583d18fa2b3",
+  "modified": true,
+  "stage": "intent-capture",
+  "notes": "No gate was approved. Tool-turn caps interrupted the first two runs; the third returned questions successfully.",
+  "modifications": [
+    "Removed one trailing ASCII space from the empty Review Override field; semantic state unchanged."
+  ],
+  "fixtureStateSha256": "4c5b6dd8700f611d177dbd97e281fc37d48fa3f651d4f2462538e3bfb16024b7"
+}

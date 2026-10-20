@@ -4,6 +4,9 @@
 判断に迷ったら、まず「2. 検証済みの事実」と「3. 守るべき不変条件」に戻ってください。
 そこに書いたことは実測で確かめた事実か、設計上の決定です。作業中に覆さないでください。
 
+2026-10-20 の M1 実地確認に基づく修正は `docs/cli-spike.md` に根拠を記録しています。
+当初の原文は Git の初回保存コミットに保持し、以下の修正は M2 の実装より先に文書 PR としてレビューします。
+
 ---
 
 ## 1. 目的と範囲
@@ -85,7 +88,8 @@ claude -p "<prompt>" --resume <uuid>       # 2ターン目以降
 - 出力は1行1 JSON です。最後の `"type":"result"` の行に次が入っています。
   `subtype`、`result`（最終メッセージ本文）、`session_id`、`total_cost_usd`、`num_turns`、
   `permission_denials`（配列。各要素に `tool_name` と `tool_input`。Bash なら `tool_input.command`）。
-- `total_cost_usd` はセッションの累計です。ターン単位の費用は前ターンとの差分で求めます。
+- `total_cost_usd` はセッションの累計です。ターン単位の費用は同じセッションの前回累計との差分で求めます。
+  これは CLI の list-price 推定であり、AWS の請求確定額とは区別します。
 
 ### 2.3 同じセッションを resume する必要がある
 
@@ -346,6 +350,7 @@ interface TurnRunner {
 
 type TurnInput = {
   workspaceDir: string;
+  claudeHomeDir: string;       // プロジェクトごとの隔離 HOME。ワークスペース・リポジトリの外
   claudeSessionId: string;      // プロジェクト作成時に UUID を発行して保存
   isFirstTurn: boolean;         // true なら --session-id、false なら --resume
   prompt: string;
@@ -365,7 +370,7 @@ type TurnEvent =
 type TurnOutcome = {
   status: "succeeded" | "failed" | "budget_exceeded" | "timed_out" | "cancelled";
   resultText: string | null;
-  sessionCostUsd: number | null;   // result 行の total_cost_usd（累計）
+  sessionCostUsd: number | null;   // result 行の total_cost_usd（セッション累計の推定）
   numTurns: number | null;
   permissionDenials: { toolName: string; toolInput: unknown }[];
   errorMessage: string | null;
@@ -375,19 +380,22 @@ type TurnOutcome = {
 ### 6.2 ClaudeCliRunner
 
 - 2.2 のコマンドを `Bun.spawn` で実行します。`cwd` はワークスペースです。
-- プロンプトは引数として渡します。`-` で始まる入力でもフラグと誤認されないように、
-  プロンプトの前に `--` を置けるか、M1 のスパイクで確認してください（7.1）。置けない場合は標準入力で渡す方式に切り替えます。
+- プロンプトは、全オプションの後の `--` に続く一つの引数として渡します。
+  M1 の Claude Code 2.1.304 でハイフン始まりの入力も成功しました。stdin は空にします。
 - 環境変数は、許可リスト方式で必要なものだけ渡します。
   `PATH`、`HOME`、`LANG`、Claude の認証用（`ANTHROPIC_API_KEY`、または `CLAUDE_CODE_USE_BEDROCK`、`AWS_REGION`、`AWS_PROFILE`、
-  `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、`AWS_SESSION_TOKEN`、`ANTHROPIC_MODEL`）、`UI_POC_BROWSER_EXECUTABLE`。
+  `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、`AWS_SESSION_TOKEN`、`AWS_CONFIG_FILE`、`AWS_SHARED_CREDENTIALS_FILE`、
+  `ANTHROPIC_MODEL`）、`UI_POC_BROWSER_EXECUTABLE`。
+  `HOME` は `claudeHomeDir` に固定します。既存 AWS 認証を使う場合は元の標準設定・認証ファイルのパスだけを参照し、値をアプリで解釈・コピー・保存しません。
   `AIDLC_UNATTENDED` は渡しません（I6）。
-- 標準出力を1行ずつ読み、そのまま `logPath` に追記しつつ、パースして `TurnEvent` に変換します。
-- 標準エラーは `logPath` と同じ場所の `.err` に保存します。
-- 子プロセスは `node:child_process` の `spawn` に `detached: true` を付けて起動し、独立したプロセスグループにします。
+- 標準出力は1行ずつ読み、既知の認証秘密値・秘密情報パターンを保存前に伏せ字にした JSONL を `logPath` に追記し、`TurnEvent` に変換します。生ログを別途保存しません。
+- 標準エラーは同じ伏せ字処理をしたものだけを `logPath` と同じ場所の `.err` に保存します。SSE と結果にも同じ処理を適用します。
+- 子プロセスは `Bun.spawn` の `detached: true` で独立したプロセスグループにします。Bun 1.3.14 / Mac で子と孫のグループ停止を確認済みで、5.2 と方式を統一します。
   タイムアウトまたは中止時は、`process.kill(-pid, "SIGTERM")` でグループごと止め、10秒後に残っていれば SIGKILL します。
   Claude Code はサブエージェントやブラウザを子プロセスとして起動するため、親だけ止めると取り残されます。
 - `result` 行が無いまま終了したら `failed` です。`subtype` が `error_max_budget_usd` 系なら `budget_exceeded` にします。
-  正確な `subtype` の値は M1 のスパイクで確認し、`runner/stream-json.ts` に定数として書いてください。
+  M1 で確認した正確な値は `error_max_budget_usd` です。`runner/stream-json.ts` に定数として書いてください。
+  `error_max_turns` は通常の失敗です。`error_during_execution` で `No conversation found with session ID:` がある場合だけ、セッション消失として扱います。
 
 ### 6.3 FakeRunner
 
@@ -403,20 +411,23 @@ type TurnOutcome = {
 3. イベントは SSE の購読者に流し、DB には保存しません（ログファイルが正本です）。
 4. 終了したら結果を保存します。ターン単位の費用は「今回の累計 − 前回の累計」です。
 5. `permissionDenials` があれば許可要求を作ります（7章）。
-6. サーバー再起動時、`running` のまま残ったターンは `failed`（理由: サーバー再起動）にします。自動で再実行はしません（I1）。
+6. サーバー再起動時、`queued` または `running` のまま残ったターンは `failed`（理由: サーバー再起動）にします。自動で再実行はしません（I1）。queued は未実行として扱い、実行済みの費用が不明なら予約を残します。
 
 ### 6.5 Claude セッションの扱い
 
 - プロジェクト作成時に UUID を発行し、最初のターンだけ `--session-id`、以降は `--resume` で使います。
+- CLI の開始イベントを記録したら、成功・失敗にかかわらず `claude_session_started` を立てます。最初の失敗でも会話は保存され、resume できることを M1 で確認しました。
 - resume が「セッションが見つからない」で失敗した場合、自動で新しいセッションを作ってはいけません。
   画面に「会話を再接続」ボタンを出します。押されたら新しい UUID を発行し、固定文字列 `/aidlc` を最初のターンとして送ります。
   AI-DLC はディスク上の状態から作業を再開します（実測済み）。この送信は本人のクリックなので I1 に反しません。
 
 ### 6.6 費用の上限
 
-- 1ターンの上限は `--max-budget-usd` に `TURN_BUDGET_USD` を渡します。
-- プロジェクトの累計が `PROJECT_BUDGET_USD` 以上なら、新しいターンを 402 で拒否し、画面に理由を出します。
-- 累計はターン単位の費用の合計で計算します。
+- 1ターンの推定上限は `--max-budget-usd` に `TURN_BUDGET_USD` を渡します。CLI は応答後判定で超過し得るため、AWS 請求の厳密な上限とは表示しません。
+- 推定費用と未精算の予約額の合計が `PROJECT_BUDGET_USD` 以上なら、新しいターンを 402 で拒否し、画面に理由を出します。残りが1ターン上限より少なければ、その残りを個別 cap とします。
+- 累計は、同じ session の累計を差し引いたターン費用の合計で計算します。ターンには利用した session ID を保存し、再接続後は新 UUID の基準 0 から計算します。
+- 開始時は個別 cap を予約します。結果の費用が取得できたら精算し、結果欠落・中止などで不明なら無料とは扱わず予約を残します。後続の同じ session の累計で回収できた場合は旧予約を解放し、その差分に未取得分を含むことを記録します。
+- M1/M8 の承認済み検証合計 1,000 USD は、このアプリのプロジェクト予算とは別に外部台帳で管理します。追加課金は適用料金と残枠を正確に判断できるときだけ実行します。
 
 ---
 
@@ -462,7 +473,7 @@ CREATE TABLE projects (
   workspace_dir TEXT NOT NULL,
   aidlc_sha TEXT NOT NULL,
   claude_session_id TEXT NOT NULL,
-  claude_session_started INTEGER NOT NULL DEFAULT 0,  -- 最初のターンが成功したら 1
+  claude_session_started INTEGER NOT NULL DEFAULT 0,  -- CLI の開始イベントを記録したら 1
   status TEXT NOT NULL CHECK (status IN ('provisioning','ready','error')),
   error_message TEXT,
   created_at TEXT NOT NULL
@@ -471,6 +482,7 @@ CREATE TABLE projects (
 CREATE TABLE turns (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id),
+  claude_session_id TEXT NOT NULL,      -- 実行に使う session のスナップショット
   seq INTEGER NOT NULL,
   origin TEXT NOT NULL CHECK (origin IN ('typed','option','action')),
   -- typed: 入力欄、option: 選択肢ボタン、action: 新ラウンド・設計書更新などのボタン
@@ -481,6 +493,8 @@ CREATE TABLE turns (
   result_text TEXT,
   session_cost_usd REAL,
   turn_cost_usd REAL,
+  reserved_cost_usd REAL NOT NULL DEFAULT 0, -- 費用が未取得なら残す予約
+  cost_reconciled INTEGER NOT NULL DEFAULT 0, -- 未取得だった過去分も差分に含む場合は 1
   num_turns INTEGER,
   error_message TEXT,
   log_path TEXT NOT NULL,
@@ -675,7 +689,7 @@ type SendTurn =
 | 変数 | 既定値 | 内容 |
 |---|---|---|
 | `PORT` | `8787` | API のポート |
-| `AIDLC_APP_DATA_DIR` | `./data` | DB、ワークスペース、ログの置き場 |
+| `AIDLC_APP_DATA_DIR` | `../aidlc-app-data` | DB、ワークスペース、ログ、CLI HOME の置き場。リポジトリ外に解決する |
 | `AIDLC_APP_RUNNER` | `claude` | `claude` か `fake` |
 | `CLAUDE_BIN` | `claude` | Claude Code CLI のパス |
 | `CLAUDE_MODEL` | `sonnet` | `--model` に渡す値 |
