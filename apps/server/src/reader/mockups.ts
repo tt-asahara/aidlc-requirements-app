@@ -25,6 +25,8 @@ export function parseContract(source: string, stage: MockupStage) {
     throw new Error("契約 JSON ブロックは1個必要です。");
   const opening = openings[0];
   if (!opening) throw new Error("契約がありません。");
+  if (!/ui-poc-contract[ \t]*$/.test(opening[0]))
+    throw new Error("契約のブロック名が不正です。");
   const fence = opening[1] ?? "```";
   const rest = source.slice((opening.index ?? 0) + opening[0].length);
   const end = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}\\s*$`, "m").exec(

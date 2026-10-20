@@ -157,7 +157,7 @@ export async function validateContext(
       if (
         snapshot.space !== expected.space ||
         !contract ||
-        contract.parsing !== "supported" ||
+        !["supported", "legacy"].includes(contract.parsing) ||
         contract.integrity !== "matched" ||
         contract.sha256 !== r.contractSha256 ||
         !contract.mappings.some((m) => sameMapping(m, r.mapping)) ||
@@ -172,5 +172,14 @@ export async function validateContext(
     } catch {
       throw stale();
     }
+    const after = await executionContext(store, project);
+    if (
+      after.space !== expected.space ||
+      after.activeIntent !== expected.activeIntent ||
+      after.currentStage !== expected.currentStage ||
+      JSON.stringify(after.latestTurn) !==
+        JSON.stringify(admitted ?? expected.latestTurn)
+    )
+      throw stale();
   }
 }

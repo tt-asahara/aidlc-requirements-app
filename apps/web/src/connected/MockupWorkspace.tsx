@@ -77,6 +77,7 @@ export function MockupWorkspace({
       `AC: ${related.map((m) => m.ac).join(", ")}`,
       `ファイル: ${[...new Set(related.map((m) => m.asset))].join(", ")}`,
       `契約: ${contract.path}`,
+      `契約形式: ${contract.parsing === "legacy" ? "旧形式・未検証（工程承認を意味しません）" : "schema 2 を解析（工程承認を意味しません）"}`,
       `確認内容: ${related.map((m) => m.check).join(" / ")}`,
       "",
       "変更したい点: ",
@@ -117,6 +118,13 @@ export function MockupWorkspace({
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            disabled={!intent || mockups.isFetching}
+            onClick={() => void mockups.refetch()}
+          >
+            契約を再読込
+          </button>
           <button
             type="button"
             aria-pressed={!selectedFile}
@@ -222,7 +230,7 @@ export function MockupWorkspace({
                           !canDraft ||
                           !isActive ||
                           !execution ||
-                          contract.parsing !== "supported" ||
+                          !["supported", "legacy"].includes(contract.parsing) ||
                           contract.integrity !== "matched"
                         }
                         onClick={consult}

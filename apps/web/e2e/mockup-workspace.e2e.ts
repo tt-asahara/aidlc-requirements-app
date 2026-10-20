@@ -19,7 +19,15 @@ test("V2 actual HTML states, every AC, legacy distinction, document round-trip a
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "この画面について相談", exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "この画面について相談", exact: true })
+    .click();
+  expect(await page.getByLabel("返答", { exact: true }).inputValue()).toContain(
+    "旧形式・未検証（工程承認を意味しません）",
+  );
+  expect(sends).toBe(1);
+  await page.getByLabel("返答", { exact: true }).fill("");
   await page.getByRole("button", { name: "2.5 refined", exact: true }).click();
   const state = page.getByRole("combobox", {
     name: "議論する状態・AC",

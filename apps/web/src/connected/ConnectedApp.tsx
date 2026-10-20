@@ -483,7 +483,12 @@ function ProjectScreen({
     !progress.isPending &&
     !history.error &&
     !progress.error &&
+    !execution.error &&
     !!execution.data &&
+    execution.data.space === progress.data?.space &&
+    execution.data.activeIntent === (progress.data?.active?.dirName ?? null) &&
+    execution.data.currentStage ===
+      (progress.data?.active?.currentStage ?? null) &&
     (execution.data.latestTurn?.id ?? null) === (turns.at(-1)?.id ?? null);
   const refresh = useCallback(() => {
     void client.invalidateQueries({ queryKey: prefix });

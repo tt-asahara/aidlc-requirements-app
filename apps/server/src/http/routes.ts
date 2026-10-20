@@ -285,8 +285,12 @@ export function projectRoutes(deps: ApiDependencies) {
       (input.origin !== "typed" || !expectedContext?.reference)
     )
       throw new PromptError("Mockup revision requires reference context");
-    if (expectedContext && input.origin === "typed")
-      input.promptText = (body as { text: string }).text;
+    if (expectedContext && input.origin === "typed") {
+      const visible = (body as { text: string }).text;
+      if (visible.length > 20_000)
+        throw new PromptError("Visible text exceeds limit");
+      input.promptText = visible;
+    }
 
     return c.json(
       {

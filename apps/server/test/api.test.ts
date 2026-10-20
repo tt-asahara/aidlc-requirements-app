@@ -870,3 +870,16 @@ test("V2 mock revision requires exact reference bytes and keeps the visible body
     ).status,
   ).toBe(403);
 });
+
+test("V2 HTTP bounds apply to the entire visible text, including surrounding whitespace", async () => {
+  const f = await setup();
+  const id = await f.create();
+  const expectedContext = await (
+    await f.request(`/api/projects/${id}/context`)
+  ).json();
+  const response = await f.request(`/api/projects/${id}/turns`, {
+    json: { origin: "typed", text: ` ${"x".repeat(20_000)} `, expectedContext },
+  });
+  expect(response.status).toBe(400);
+  expect(f.store.listTurns(id)).toHaveLength(0);
+});
