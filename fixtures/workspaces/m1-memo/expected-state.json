@@ -1,0 +1,172 @@
+{
+  "scope": "ui-poc-requirements",
+  "currentStage": "intent-capture",
+  "lastCompletedStage": "state-init",
+  "stages": [
+    {
+      "slug": "workspace-scaffold",
+      "mark": "x",
+      "disposition": "EXECUTE"
+    },
+    {
+      "slug": "workspace-detection",
+      "mark": "x",
+      "disposition": "EXECUTE"
+    },
+    {
+      "slug": "state-init",
+      "mark": "x",
+      "disposition": "EXECUTE"
+    },
+    {
+      "slug": "intent-capture",
+      "mark": "-",
+      "disposition": "EXECUTE"
+    },
+    {
+      "slug": "market-research",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "feasibility",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "scope-definition",
+      "mark": " ",
+      "disposition": "EXECUTE"
+    },
+    {
+      "slug": "team-formation",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "rough-mockups",
+      "mark": " ",
+      "disposition": "EXECUTE"
+    },
+    {
+      "slug": "approval-handoff",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "reverse-engineering",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "practices-discovery",
+      "mark": " ",
+      "disposition": "EXECUTE"
+    },
+    {
+      "slug": "requirements-analysis",
+      "mark": " ",
+      "disposition": "EXECUTE"
+    },
+    {
+      "slug": "user-stories",
+      "mark": " ",
+      "disposition": "EXECUTE"
+    },
+    {
+      "slug": "refined-mockups",
+      "mark": " ",
+      "disposition": "EXECUTE"
+    },
+    {
+      "slug": "domain-design",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "units-generation",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "contract-design",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "delivery-planning",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "functional-design",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "nfr-requirements",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "nfr-design",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "infrastructure-design",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "code-generation",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "build-and-test",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "ci-pipeline",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "deployment-pipeline",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "environment-provisioning",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "deployment-execution",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "observability-setup",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "incident-response",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "performance-validation",
+      "mark": " ",
+      "disposition": "SKIP"
+    },
+    {
+      "slug": "feedback-optimization",
+      "mark": " ",
+      "disposition": "SKIP"
+    }
+  ]
+}
