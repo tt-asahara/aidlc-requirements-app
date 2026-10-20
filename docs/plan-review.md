@@ -19,3 +19,15 @@ M1 の取得と provisioner は `architecture.md` に記録。データの既定
 起動ガードを M1 に追加し、provision 以外で公式状態には書き込まない。
 その後、Bedrock と M1/M8 合計 1,000 USD 以下が承認され、M1 の実地確認と実物の状態 fixture を取得した。結果・計画修正・予算仮枠は `cli-spike.md` に記録。
 追加課金は正確な残枠を確認するまで停止するが、M2 のモデル不要開発には進む。完全一致許可とプレビューの token 境界は引き続き保留。
+
+## M3 前の HTML / 開発認可境界の修正
+
+9.3 の「sandbox だから Cookie が送られない」「URL token を iframe が読めない」は成立しないため、実装前の文書 PR で修正した。
+URL token は読み取り専用の短命 capability、API は明示的な開発ユーザーヘッダーと所有者チェックに分離する。Cookie / bearer token を API ログインに転用しない。
+CSP と Origin/Host 制限は権限を狭めるためのもので、フェーズ2の完全隔離を先取りした保証ではない。
+根拠:
+- https://developer.mozilla.org/en-US/docs/Web/API/Location/href （自身の完全な URL を読む）
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/sandbox （opaque origin と Cookie / DOM 隔離）
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy （no-referrer）
+
+この設計を先にマージし、M3 は reader と capability の純粋処理、M4 は HTTP 認可と配信を実装する。実モデルは使わない。
