@@ -58,4 +58,7 @@ Bun 1.3.14 / Mac で lint、strict 型検査、83 テスト（247 assertions）�
 - I1: 失敗・復旧・許可証跡の生成が新しい送信を発生させない。
 - FakeRunner + SQLite で明示送信 → イベント → 結果永続化、再オープン、累計差分、費用予約と照合を確認。
 
-API / UI の起動結果と CI は PR に記載する。I1〜I9 全体の完成と実モデル E2E は引き続き後続マイルストーンの条件。
+正式作業リポジトリ `/Users/cb-329/work-andy/aidlc-requirements-app` で、新しい一時データ領域と fake 設定を使い `bun run dev` を確認した。
+API 18788 / UI 15174 が同時起動し、直接および Vite プロキシ経由の health が `milestone=M2`、固定 SHA、`ready=true` を返した。DB は 0600。
+既存 UI デモ 5274 は継続稼働。起動確認用プロセスだけを終了する。CI 結果は PR に記載する。
+I1〜I9 全体の完成と実モデル E2E は引き続き後続マイルストーンの条件。
