@@ -23,6 +23,7 @@ export function createApp(repoRoot: string = APP_ROOT, deps?: ApiDependencies) {
       milestone: deps ? "M4" : "M3",
       aidlc: { sha: aidlc.sha, ready: aidlc.ready },
     };
+    if (deps) health.runner = deps.config.runner;
     return c.json(health);
   });
 

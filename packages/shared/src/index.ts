@@ -1,5 +1,6 @@
 export type HealthResponse = {
   status: "ok";
+  runner?: "fake" | "claude";
   milestone: "M0" | "M1" | "M2" | "M3" | "M4";
   aidlc: {
     sha: string | null;
