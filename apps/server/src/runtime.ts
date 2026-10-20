@@ -1,4 +1,12 @@
-import { mkdir, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
+import { Database } from "bun:sqlite";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  rmdir,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { DevAuthProvider } from "./auth/provider.ts";
 import type { readConfig } from "./config.ts";
@@ -12,8 +20,35 @@ import {
 import { SqliteStore } from "./store/sqlite.ts";
 import { LocalWorkspaceStorage } from "./workspace/provision.ts";
 
-/** One runtime owns a data directory; stale locks are removed only after the prior PID has exited. */
+/** Kernel file locks survive neither a crashed process nor a container PID namespace.
+ * The separate SQLite lease protects the owner marker even when a restarted container reuses PID 7.
+ */
 async function acquireRuntimeLock(dataDir: string) {
+  await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  const path = join(dataDir, ".runtime-lock.sqlite");
+  const lease = new Database(path);
+  try {
+    lease.exec("PRAGMA busy_timeout=0; BEGIN EXCLUSIVE");
+  } catch {
+    lease.close();
+    throw new Error("Another server already owns this data directory");
+  }
+  try {
+    await chmod(path, 0o600);
+    const releaseMarker = await acquireOwnerMarker(dataDir);
+    return async () => {
+      try {
+        await releaseMarker();
+      } finally {
+        lease.close();
+      }
+    };
+  } catch (error) {
+    lease.close();
+    throw error;
+  }
+}
+async function acquireOwnerMarker(dataDir: string) {
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const dir = join(dataDir, ".server-lock");
   const file = join(dir, "owner.json");
@@ -21,10 +56,14 @@ async function acquireRuntimeLock(dataDir: string) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       await mkdir(dir, { mode: 0o700 });
-      await writeFile(file, JSON.stringify({ pid: process.pid, token }), {
-        flag: "wx",
-        mode: 0o600,
-      });
+      await writeFile(
+        file,
+        JSON.stringify({ pid: process.pid, token, leaseVersion: 2 }),
+        {
+          flag: "wx",
+          mode: 0o600,
+        },
+      );
       return async () => {
         const owner = JSON.parse(await readFile(file, "utf8")) as {
           token: unknown;
@@ -38,6 +77,7 @@ async function acquireRuntimeLock(dataDir: string) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const owner = JSON.parse(await readFile(file, "utf8")) as {
         pid: unknown;
+        leaseVersion?: unknown;
       };
       if (
         typeof owner.pid !== "number" ||
@@ -45,6 +85,12 @@ async function acquireRuntimeLock(dataDir: string) {
         owner.pid <= 1
       )
         throw new Error("Invalid runtime lock; inspect the data directory");
+      if (owner.leaseVersion === 2) {
+        // Exclusive SQLite lease proves this marker's owner has released/died.
+        await unlink(file);
+        await rmdir(dir);
+        continue;
+      }
       try {
         process.kill(owner.pid, 0);
       } catch (check) {
