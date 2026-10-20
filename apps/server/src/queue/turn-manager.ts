@@ -9,6 +9,8 @@ import {
 import type { Store, SubmitTurn, Turn } from "../store/types.ts";
 
 export type TurnManagerConfig = {
+  executionMode?: "fake" | "claude";
+  fakeScenario?: "requirements" | null;
   dataDir: string;
   model: string;
   turnBudgetUsd: number;

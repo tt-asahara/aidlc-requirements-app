@@ -1,0 +1,10 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "result": "## 設計書の再生\n\n`design-document/README.md` をご覧ください。これは初期配置済みの合成設計書です。\n\n<!-- fixture:doc -->",
+  "total_cost_usd": 0.01,
+  "num_turns": 1,
+  "permission_denials": [],
+  "fixture_kind": "synthetic requirements"
+}

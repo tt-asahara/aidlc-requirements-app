@@ -5,6 +5,10 @@ import type { readConfig } from "./config.ts";
 import { TurnManager } from "./queue/turn-manager.ts";
 import { ClaudeCliRunner } from "./runner/claude-cli.ts";
 import { FakeRunner } from "./runner/fake.ts";
+import {
+  FixtureWorkspaceStorage,
+  ScenarioFakeRunner,
+} from "./runner/scenario.ts";
 import { SqliteStore } from "./store/sqlite.ts";
 import { LocalWorkspaceStorage } from "./workspace/provision.ts";
 
@@ -109,15 +113,20 @@ export async function createRuntime(config: ReturnType<typeof readConfig>) {
   store.recoverProvisioning();
   const auth = new DevAuthProvider(config.devUsers);
   for (const user of auth.users()) store.createUser(user.id, user.displayName);
-  const workspaces = new LocalWorkspaceStorage(config);
+  const workspaces = config.fakeScenario
+    ? new FixtureWorkspaceStorage(config)
+    : new LocalWorkspaceStorage(config);
   const provisions = new Set<Promise<void>>();
-  const runner =
-    config.runner === "fake"
+  const runner = config.fakeScenario
+    ? new ScenarioFakeRunner(store, config.repoRoot)
+    : config.runner === "fake"
       ? new FakeRunner(
           join(config.repoRoot, "fixtures/stream-json/m1-question.jsonl"),
         )
       : new ClaudeCliRunner(config.claudeBin);
   const turns = new TurnManager(store, runner, {
+    executionMode: config.runner,
+    fakeScenario: config.fakeScenario,
     dataDir: config.dataDir,
     model: config.claudeModel,
     turnBudgetUsd: config.turnBudgetUsd,

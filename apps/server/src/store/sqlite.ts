@@ -11,9 +11,10 @@ import {
   type SubmitTurn,
   type Turn,
   TurnAdmissionError,
+  type TurnLimits,
 } from "./types.ts";
 
-const projectColumns = `id,name,owner_id AS ownerId,workspace_dir AS workspaceDir,aidlc_sha AS aidlcSha,
+const projectColumns = `execution_mode AS executionMode,fake_scenario AS fakeScenario,id,name,owner_id AS ownerId,workspace_dir AS workspaceDir,aidlc_sha AS aidlcSha,
  claude_session_id AS claudeSessionId,claude_session_started AS claudeSessionStarted,status,error_message AS errorMessage,created_at AS createdAt`;
 const turnColumns = `id,project_id AS projectId,seq,claude_session_id AS claudeSessionId,origin,action,prompt_text AS promptText,
  submitted_by AS submittedBy,status,result_text AS resultText,session_cost_usd AS sessionCostUsd,turn_cost_usd AS turnCostUsd,
@@ -34,7 +35,7 @@ export class SqliteStore implements Store {
       const version =
         this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()
           ?.user_version ?? 0;
-      if (version > 1)
+      if (version > 2)
         throw new Error("Database schema is newer than this application");
       if (version === 0) {
         this.db.exec(
@@ -45,6 +46,15 @@ export class SqliteStore implements Store {
         );
         if (path !== ":memory:") chmodSync(path, 0o600);
         this.db.exec("PRAGMA user_version=1");
+      }
+      if (version < 2) {
+        this.db.exec(
+          readFileSync(
+            new URL("./migrations/002-project-mode.sql", import.meta.url),
+            "utf8",
+          ),
+        );
+        this.db.exec("PRAGMA user_version=2");
       }
     });
     migrate.immediate();
@@ -59,12 +69,17 @@ export class SqliteStore implements Store {
   createProject(
     project: Omit<
       Project,
-      "createdAt" | "claudeSessionStarted" | "errorMessage"
-    >,
+      | "createdAt"
+      | "claudeSessionStarted"
+      | "errorMessage"
+      | "executionMode"
+      | "fakeScenario"
+    > &
+      Partial<Pick<Project, "executionMode" | "fakeScenario">>,
   ) {
     this.db
       .query(
-        "INSERT INTO projects(id,name,owner_id,workspace_dir,aidlc_sha,claude_session_id,status,created_at) VALUES(?,?,?,?,?,?,?,?)",
+        "INSERT INTO projects(id,name,owner_id,workspace_dir,aidlc_sha,claude_session_id,status,created_at,execution_mode,fake_scenario) VALUES(?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         project.id,
@@ -75,6 +90,8 @@ export class SqliteStore implements Store {
         project.claudeSessionId,
         project.status,
         now(),
+        project.executionMode ?? "unknown",
+        project.fakeScenario ?? null,
       );
   }
   getProject(id: string) {
@@ -105,15 +122,21 @@ export class SqliteStore implements Store {
         .get(projectId) ?? { reportedUsd: 0, reservedUsd: 0 }
     );
   }
-  admitTurn(
-    input: SubmitTurn,
-    limits: { turnBudgetUsd: number; projectBudgetUsd: number; logDir: string },
-  ): Turn {
+  admitTurn(input: SubmitTurn, limits: TurnLimits): Turn {
     return this.db
       .transaction(() => {
         const project = this.getProject(input.projectId);
         if (!project || project.ownerId !== input.submittedBy)
           throw new TurnAdmissionError(404, "Project not found");
+        if (
+          limits.executionMode &&
+          (project.executionMode !== limits.executionMode ||
+            project.fakeScenario !== (limits.fakeScenario ?? null))
+        )
+          throw new TurnAdmissionError(
+            409,
+            "Project execution mode differs from this server; create a project in the selected mode",
+          );
         if (project.status !== "ready")
           throw new TurnAdmissionError(409, "Project is not ready");
         if (
@@ -365,11 +388,7 @@ export class SqliteStore implements Store {
       )
       .run().changes;
   }
-  admitReconnect(
-    input: SubmitTurn,
-    newSessionId: string,
-    limits: { turnBudgetUsd: number; projectBudgetUsd: number; logDir: string },
-  ) {
+  admitReconnect(input: SubmitTurn, newSessionId: string, limits: TurnLimits) {
     return this.db
       .transaction(() => {
         const project = this.getProject(input.projectId);

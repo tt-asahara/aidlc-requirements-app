@@ -3,8 +3,8 @@ import { createApp } from "./http/app";
 import { createRuntime } from "./runtime.ts";
 import { requireAidlcReady } from "./workspace/aidlc";
 
-requireAidlcReady(APP_ROOT);
 const config = readConfig(process.env);
+if (!config.fakeScenario) requireAidlcReady(APP_ROOT);
 const runtime = await createRuntime(config);
 const app = createApp(APP_ROOT, runtime);
 

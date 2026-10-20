@@ -43,6 +43,14 @@ export function readConfig(
   const runner = text("AIDLC_APP_RUNNER", "claude");
   if (runner !== "claude" && runner !== "fake")
     throw new Error("AIDLC_APP_RUNNER must be claude or fake");
+  const fakeScenario = env.AIDLC_APP_FAKE_SCENARIO || null;
+  if (
+    fakeScenario !== null &&
+    (runner !== "fake" || fakeScenario !== "requirements")
+  )
+    throw new Error(
+      "AIDLC_APP_FAKE_SCENARIO=requirements requires AIDLC_APP_RUNNER=fake",
+    );
   const devUsers = text("AIDLC_APP_DEV_USERS", "dev")
     .split(",")
     .map((name) => name.trim());
@@ -57,6 +65,7 @@ export function readConfig(
       text("AIDLC_APP_DATA_DIR", "../aidlc-app-data"),
     ),
     runner: runner as "claude" | "fake",
+    fakeScenario: fakeScenario as "requirements" | null,
     claudeBin: text("CLAUDE_BIN", "claude"),
     claudeModel: text("CLAUDE_MODEL", "sonnet"),
     turnBudgetUsd: positive("TURN_BUDGET_USD", 5),

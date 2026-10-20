@@ -21,6 +21,7 @@ import {
   previewHeaders,
 } from "../reader/preview.ts";
 import { readProgress } from "../reader/progress.ts";
+import { scenarioProgress } from "../runner/scenario.ts";
 import { type Store, TurnAdmissionError } from "../store/types.ts";
 import { readAidlcLock } from "../workspace/aidlc.ts";
 import { sanitizeDiagnostic } from "../workspace/command.ts";
@@ -87,6 +88,18 @@ export function projectRoutes(deps: ApiDependencies) {
       throw new TurnAdmissionError(404, "Project not found");
     return project;
   };
+  const executionProject = (id: string, userId: string) => {
+    const project = ownProject(id, userId);
+    if (
+      project.executionMode !== config.runner ||
+      project.fakeScenario !== config.fakeScenario
+    )
+      throw new TurnAdmissionError(
+        409,
+        "プロジェクトとサーバーの実行モードが異なります。",
+      );
+    return project;
+  };
   const json = async (request: Request): Promise<unknown> => {
     if (
       !request.headers
@@ -122,6 +135,8 @@ export function projectRoutes(deps: ApiDependencies) {
       aidlcSha: lock.sha,
       claudeSessionId: crypto.randomUUID(),
       status: "provisioning",
+      executionMode: config.runner,
+      fakeScenario: config.fakeScenario,
     });
     const provisioning = Promise.resolve()
       .then(async () => {
@@ -179,14 +194,17 @@ export function projectRoutes(deps: ApiDependencies) {
     if (project.status !== "ready")
       throw new TurnAdmissionError(409, "Project is not ready");
     const history = store.listTurns(project.id);
-    return c.json(
-      await readProgress(
-        project.workspaceDir,
-        history.some(
-          (turn) => turn.status === "running" || turn.status === "queued",
-        ),
-        history.at(-1)?.status === "succeeded",
+    const progress = await readProgress(
+      project.workspaceDir,
+      history.some(
+        (turn) => turn.status === "running" || turn.status === "queued",
       ),
+      history.at(-1)?.status === "succeeded",
+    );
+    return c.json(
+      project.fakeScenario === "requirements"
+        ? scenarioProgress(progress, history)
+        : progress,
     );
   });
   app.get("/api/projects/:id/turns", (c) => {
@@ -214,6 +232,7 @@ export function projectRoutes(deps: ApiDependencies) {
     });
   });
   app.post("/api/projects/:id/turns", async (c) => {
+    executionProject(c.req.param("id"), c.get("userId"));
     const previous =
       store.listTurns(c.req.param("id")).at(-1)?.resultText ?? "";
     const input = toPrompt(await json(c.req.raw), previous);
@@ -230,12 +249,13 @@ export function projectRoutes(deps: ApiDependencies) {
       202,
     );
   });
-  app.post("/api/projects/:id/reconnect", (c) =>
-    c.json(
+  app.post("/api/projects/:id/reconnect", (c) => {
+    executionProject(c.req.param("id"), c.get("userId"));
+    return c.json(
       { turn: publicTurn(turns.reconnect(c.req.param("id"), c.get("userId"))) },
       202,
-    ),
-  );
+    );
+  });
   const ownTurn = (projectId: string, turnId: string) => {
     const turn = store.getTurn(turnId);
     if (!turn || turn.projectId !== projectId)
@@ -313,6 +333,7 @@ export function projectRoutes(deps: ApiDependencies) {
   );
   for (const decision of ["approve", "deny", "revoke"] as const) {
     app.post(`/api/projects/:id/permissions/:reqId/${decision}`, (c) => {
+      executionProject(c.req.param("id"), c.get("userId"));
       const row = store
         .permissionRequests(c.req.param("id"))
         .find((request) => request.id === c.req.param("reqId"));

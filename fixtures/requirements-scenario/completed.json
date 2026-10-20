@@ -1,0 +1,10 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "result": "## 要件ラウンド完了（合成 fixture）\n\nrefined-mockups までの再生が完了しました。\n\n成果物: `design-document/README.md` と `intents/fixture-round-1/mockups/index.html`\n\n実モデルでの承認や成果物生成ではありません。\n\n<!-- fixture:completed -->",
+  "total_cost_usd": 0.01,
+  "num_turns": 1,
+  "permission_denials": [],
+  "fixture_kind": "synthetic requirements"
+}
