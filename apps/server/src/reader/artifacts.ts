@@ -25,7 +25,14 @@ export async function listArtifacts(
   path = "",
 ): Promise<ArtifactEntry[]> {
   const relative = artifactPath(space, path);
-  const root = await resolveInside(workspace, relative);
+  let root: string;
+  try {
+    root = await resolveInside(workspace, relative);
+  } catch (error) {
+    if (path === "" && error instanceof ReaderError && error.status === 404)
+      return [];
+    throw error;
+  }
   if (!(await lstat(root)).isDirectory())
     throw new ReaderError(400, "Expected directory");
   const entries: ArtifactEntry[] = [];

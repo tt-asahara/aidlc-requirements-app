@@ -1,10 +1,12 @@
 import { mkdir, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { DevAuthProvider } from "./auth/provider.ts";
 import type { readConfig } from "./config.ts";
 import { TurnManager } from "./queue/turn-manager.ts";
 import { ClaudeCliRunner } from "./runner/claude-cli.ts";
 import { FakeRunner } from "./runner/fake.ts";
 import { SqliteStore } from "./store/sqlite.ts";
+import { LocalWorkspaceStorage } from "./workspace/provision.ts";
 
 /** One runtime owns a data directory; stale locks are removed only after the prior PID has exited. */
 async function acquireRuntimeLock(dataDir: string) {
@@ -104,6 +106,11 @@ export async function createRuntime(config: ReturnType<typeof readConfig>) {
     throw error;
   }
   const recovered = store.recoverInterrupted();
+  store.recoverProvisioning();
+  const auth = new DevAuthProvider(config.devUsers);
+  for (const user of auth.users()) store.createUser(user.id, user.displayName);
+  const workspaces = new LocalWorkspaceStorage(config);
+  const provisions = new Set<Promise<void>>();
   const runner =
     config.runner === "fake"
       ? new FakeRunner(
@@ -122,10 +129,15 @@ export async function createRuntime(config: ReturnType<typeof readConfig>) {
     store,
     turns,
     recovered,
+    config,
+    auth,
+    workspaces,
+    provisions,
     async close() {
       if (closed) return;
       closed = true;
       await turns.close();
+      await Promise.all([...provisions]);
       store.close();
       await release();
     },

@@ -1,11 +1,12 @@
 import { APP_ROOT, readConfig } from "./config";
-import { app } from "./http/app";
+import { createApp } from "./http/app";
 import { createRuntime } from "./runtime.ts";
 import { requireAidlcReady } from "./workspace/aidlc";
 
 requireAidlcReady(APP_ROOT);
 const config = readConfig(process.env);
 const runtime = await createRuntime(config);
+const app = createApp(APP_ROOT, runtime);
 
 const server = Bun.serve({
   hostname: "127.0.0.1",

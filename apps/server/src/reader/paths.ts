@@ -96,14 +96,35 @@ export async function readInside(
       entry.dev !== stat.dev
     )
       throw new ReaderError(403, "File changed while opening");
-    const buffer = new Uint8Array(limit + 1);
-    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
-    if (bytesRead > limit)
+    const buffer = new Uint8Array(Math.min(limit + 1, stat.size + 1));
+    let used = 0;
+    while (used < buffer.length) {
+      const { bytesRead } = await file.read(
+        buffer,
+        used,
+        buffer.length - used,
+        used,
+      );
+      if (bytesRead === 0) break;
+      used += bytesRead;
+    }
+    if (used > limit)
       throw new ReaderError(
         413,
         "File exceeds display limit; download the ZIP instead",
       );
-    return buffer.slice(0, bytesRead);
+    const after = await file.stat();
+    const current = await lstat(await resolveInside(workspace, path));
+    if (
+      used !== stat.size ||
+      after.size !== stat.size ||
+      after.mtimeMs !== stat.mtimeMs ||
+      after.nlink > 1 ||
+      current.ino !== stat.ino ||
+      current.dev !== stat.dev
+    )
+      throw new ReaderError(403, "File changed while reading");
+    return buffer.slice(0, used);
   } finally {
     await file.close();
   }

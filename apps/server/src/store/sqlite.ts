@@ -1,8 +1,11 @@
 import { Database } from "bun:sqlite";
 import { chmodSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { exactRule } from "../permissions/rules.ts";
+import { isMissingSession } from "../runner/stream-json.ts";
 import type { TurnOutcome } from "../runner/types.ts";
 import {
+  type PermissionRow,
   type Project,
   type Store,
   type SubmitTurn,
@@ -231,21 +234,7 @@ export class SqliteStore implements Store {
           );
         for (const denial of outcome.permissionDenials) {
           const toolInput = JSON.stringify(denial.toolInput ?? null);
-          const command =
-            denial.toolInput && typeof denial.toolInput === "object"
-              ? (denial.toolInput as { command?: unknown }).command
-              : null;
-          // Empty rule is evidence requiring an exact permission design in M7, never an allow rule.
-          const rule =
-            denial.toolName === "Bash"
-              ? typeof command === "string" &&
-                command.length > 0 &&
-                !/[*?[\]\n\r]/.test(command)
-                ? `Bash(${command})`
-                : ""
-              : /^[A-Za-z][\w]*$/.test(denial.toolName)
-                ? denial.toolName
-                : "";
+          const rule = exactRule(denial.toolName, denial.toolInput) ?? "";
           const duplicate = this.db
             .query(
               "SELECT id FROM permission_requests WHERE project_id=? AND status='pending' AND ((?<>'' AND rule=?) OR (?='' AND tool_name=? AND tool_input=?))",
@@ -296,23 +285,110 @@ export class SqliteStore implements Store {
       .immediate();
   }
   approvedRules(projectId: string) {
-    return this.db
-      .query<{ rule: string }, [string]>(
-        "SELECT DISTINCT rule FROM permission_requests WHERE project_id=? AND status='approved'",
-      )
-      .all(projectId)
-      .map((row) => row.rule)
-      .filter((rule) => rule.length > 0 && !/[*?[\]\n\r]/.test(rule));
+    return this.permissionRequests(projectId).flatMap((row) => {
+      const rule = exactRule(row.toolName, JSON.parse(row.toolInput));
+      return row.status === "approved" && rule !== null && row.rule === rule
+        ? [rule]
+        : [];
+    });
   }
   permissionRequests(projectId: string) {
     return this.db
-      .query<
-        { rule: string; toolName: string; toolInput: string; status: string },
-        [string]
-      >(
-        "SELECT rule,tool_name AS toolName,tool_input AS toolInput,status FROM permission_requests WHERE project_id=?",
+      .query<PermissionRow, [string]>(
+        "SELECT id,project_id AS projectId,turn_id AS turnId,tool_name AS toolName,tool_input AS toolInput,rule,status,decided_by AS decidedBy,decided_at AS decidedAt,created_at AS createdAt FROM permission_requests WHERE project_id=? ORDER BY created_at,id",
       )
       .all(projectId);
+  }
+  decidePermission(
+    projectId: string,
+    requestId: string,
+    decision: "approve" | "deny" | "revoke",
+    userId: string,
+  ) {
+    if (decision === "approve") {
+      const row = this.permissionRequests(projectId).find(
+        (request) => request.id === requestId,
+      );
+      if (
+        !row ||
+        row.rule !== exactRule(row.toolName, JSON.parse(row.toolInput)) ||
+        !row.rule
+      )
+        return false;
+    }
+    const expected = decision === "revoke" ? "approved" : "pending";
+    const status =
+      decision === "approve"
+        ? "approved"
+        : decision === "deny"
+          ? "denied"
+          : "revoked";
+    return (
+      this.db
+        .query(
+          "UPDATE permission_requests SET status=?,decided_by=?,decided_at=? WHERE id=? AND project_id=? AND status=? AND EXISTS(SELECT 1 FROM projects WHERE id=? AND owner_id=?)",
+        )
+        .run(
+          status,
+          userId,
+          now(),
+          requestId,
+          projectId,
+          expected,
+          projectId,
+          userId,
+        ).changes === 1
+    );
+  }
+  listProjects(ownerId: string) {
+    return this.db
+      .query<Project, [string]>(
+        `SELECT ${projectColumns} FROM projects WHERE owner_id=? ORDER BY created_at DESC,id`,
+      )
+      .all(ownerId);
+  }
+  finishProvision(
+    id: string,
+    status: "ready" | "error",
+    errorMessage: string | null,
+  ) {
+    this.db
+      .query(
+        "UPDATE projects SET status=?,error_message=? WHERE id=? AND status='provisioning'",
+      )
+      .run(status, errorMessage, id);
+  }
+  recoverProvisioning() {
+    return this.db
+      .query(
+        "UPDATE projects SET status='error',error_message='サーバー再起動により作成が中断されました' WHERE status='provisioning'",
+      )
+      .run().changes;
+  }
+  admitReconnect(
+    input: SubmitTurn,
+    newSessionId: string,
+    limits: { turnBudgetUsd: number; projectBudgetUsd: number; logDir: string },
+  ) {
+    return this.db
+      .transaction(() => {
+        const project = this.getProject(input.projectId);
+        if (!project || project.ownerId !== input.submittedBy)
+          throw new TurnAdmissionError(404, "Project not found");
+        const last = this.listTurns(project.id).at(-1);
+        if (!last || !isMissingSession(last))
+          throw new TurnAdmissionError(
+            409,
+            "Session reconnect is not available",
+          );
+        this.db
+          .query(
+            "UPDATE projects SET claude_session_id=?,claude_session_started=0 WHERE id=?",
+          )
+          .run(newSessionId, project.id);
+        return this.admitTurn(input, limits);
+      })
+      .immediate();
   }
   close() {
     this.db.close();

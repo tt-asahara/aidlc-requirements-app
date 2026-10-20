@@ -51,11 +51,12 @@ export function readConfig(
   return {
     repoRoot,
     port: readPort(env),
+    webPort: readPort({ PORT: env.WEB_PORT ?? "5173" }),
     dataDir: externalDataDir(
       repoRoot,
       text("AIDLC_APP_DATA_DIR", "../aidlc-app-data"),
     ),
-    runner,
+    runner: runner as "claude" | "fake",
     claudeBin: text("CLAUDE_BIN", "claude"),
     claudeModel: text("CLAUDE_MODEL", "sonnet"),
     turnBudgetUsd: positive("TURN_BUDGET_USD", 5),
