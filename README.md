@@ -1,6 +1,6 @@
 # AI-DLC 要件定義アプリ
 
-## ローカル起動（M1）
+## ローカル起動（M2）
 
 Bun 1.3.14 を用意し、リポジトリのルートで実行します。
 
@@ -20,7 +20,7 @@ AIDLC_APP_DATA_DIR=../aidlc-app-data bun run dev
 `fetch-aidlc.ts` は lock の SHA を `.cache/aidlc-src/` に取得し、Bun の依存と Claude 用ハーネス・ui-poc をビルドします。
 準備済みなら再実行は何もしません。準備がないと API は起動を停止し、fetch コマンドを案内します。
 
-`AIDLC_APP_DATA_DIR` はリポジトリと別のディレクトリを明示してください。計画の既定 `./data` は I8 と矛盾するため、M1 はエラーにします。
+`AIDLC_APP_DATA_DIR` の既定は、計画修正 PR #4 に沿ってリポジトリ外の `../aidlc-app-data` です。DB、ログ、Claude セッションをここに保存します。`./data` などリポジトリ内のパスは拒否します。
 設定例と後工程の保留は `.env.example`、`docs/architecture.md`、`docs/plan-review.md` を参照してください。
 
 モデルを使わない導入確認（新しい ULID を指定。既存ディレクトリは再利用しません）:
@@ -40,3 +40,8 @@ bun run typecheck
 bun test
 bun run build
 ```
+
+M2 では SQLite、録画再生、ターン制御まで実装済みです。画面とプロジェクト API の接続は M4/M5 以降で行います。
+`AIDLC_APP_RUNNER=fake` は録画再生を選びます。起動だけでは、どちらの runner でもモデルを呼びません。
+同じデータディレクトリを複数の API サーバーで同時に開くことはできません。
+モデル不要の検証結果と費用の扱いは `docs/m2-validation.md` に記載します。
