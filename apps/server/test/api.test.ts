@@ -883,3 +883,56 @@ test("V2 HTTP bounds apply to the entire visible text, including surrounding whi
   expect(response.status).toBe(400);
   expect(f.store.listTurns(id)).toHaveLength(0);
 });
+
+test("V2 option parsing freezes the response after the request body completes", async () => {
+  let cost = 0;
+  const f = await setup({ run: async () => success(++cost) });
+  const id = await f.create();
+  const url = `/api/projects/${id}`;
+  const first = await f.request(`${url}/turns`, {
+    json: { origin: "typed", text: "first" },
+  });
+  await f.turns.wait((await first.json()).turn.id);
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c;
+    },
+  });
+  const pending = f.app.request(`http://127.0.0.1:8787${url}/turns`, {
+    method: "POST",
+    headers: { "X-AIDLC-User": "dev", "Content-Type": "application/json" },
+    body: stream,
+  });
+  await Bun.sleep(0);
+  const next = f.store.admitTurn(
+    {
+      projectId: id,
+      submittedBy: f.store.getProject(id)?.ownerId ?? "missing",
+      origin: "typed",
+      promptText: "other tab",
+    },
+    { turnBudgetUsd: 1, projectBudgetUsd: 10, logDir: f.dataDir },
+  );
+  f.store.markRunning(next.id);
+  f.store.finishTurn(next.id, {
+    ...success(++cost),
+    resultText: "1. 別の質問\n2. 最新の質問への回答",
+  });
+  const expectedContext = await (await f.request(`${url}/context`)).json();
+  controller?.enqueue(
+    new TextEncoder().encode(
+      JSON.stringify({
+        origin: "option",
+        optionLabel: "2. 最新の質問への回答",
+        expectedContext,
+      }),
+    ),
+  );
+  controller?.close();
+  const response = await pending;
+  expect(response.status).toBe(202);
+  const result = (await response.json()).turn;
+  await f.turns.wait(result.id);
+  expect(f.store.getTurn(result.id)?.promptText).toBe("2");
+});

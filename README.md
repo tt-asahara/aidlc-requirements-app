@@ -1,5 +1,20 @@
 # AI-DLC 要件定義アプリ
 
+## V2 mockup workspace
+
+V2 は `v2/mockup-workspace` ブランチの独立した作業です。モック中心の三領域画面、契約読取 API、送信時の対象整合ガードを追加します。設計・検証状況は [V2 実装計画](docs/v2-implementation-plan.md) を参照してください。
+
+既存サービスやデータと分離したモデル未使用の起動例:
+
+```sh
+bun install --frozen-lockfile
+v2_data_dir=$(mktemp -d /tmp/aidlc-v2-demo.XXXXXX)
+AIDLC_APP_RUNNER=fake AIDLC_APP_FAKE_SCENARIO=requirements \
+  AIDLC_APP_DATA_DIR="$v2_data_dir" PORT=19360 WEB_PORT=19361 bun run dev
+```
+
+画面は http://127.0.0.1:19361 です。`/api/health` が `runner=fake` であることを確認してから操作してください。終了は Ctrl+C。`?mode=demo` は従来の未接続デモです。空きポートが異なる場合は API と WEB の両方を指定してください。
+
 ## ローカル起動（M8）
 
 モデルを使わない Docker 起動:
