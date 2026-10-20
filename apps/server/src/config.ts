@@ -51,6 +51,7 @@ export function readConfig(
   return {
     repoRoot,
     port: readPort(env),
+    webPort: readPort({ PORT: env.WEB_PORT ?? "5173" }),
     dataDir: externalDataDir(
       repoRoot,
       text("AIDLC_APP_DATA_DIR", "../aidlc-app-data"),

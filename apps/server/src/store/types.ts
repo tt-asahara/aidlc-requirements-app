@@ -45,6 +45,18 @@ export class TurnAdmissionError extends Error {
     super(message);
   }
 }
+export type PermissionRow = {
+  id: string;
+  projectId: string;
+  turnId: string;
+  toolName: string;
+  toolInput: string;
+  rule: string;
+  status: "pending" | "approved" | "denied" | "revoked";
+  decidedBy: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+};
 export interface Store {
   createUser(id: string, displayName: string): void;
   createProject(
@@ -67,8 +79,24 @@ export interface Store {
   recoverInterrupted(): number;
   approvedRules(projectId: string): string[];
   projectCosts(projectId: string): { reportedUsd: number; reservedUsd: number };
-  permissionRequests(
+  permissionRequests(projectId: string): PermissionRow[];
+  decidePermission(
     projectId: string,
-  ): { rule: string; toolName: string; toolInput: string; status: string }[];
+    requestId: string,
+    decision: "approve" | "deny" | "revoke",
+    userId: string,
+  ): boolean;
+  listProjects(ownerId: string): Project[];
+  finishProvision(
+    id: string,
+    status: "ready" | "error",
+    errorMessage: string | null,
+  ): void;
+  recoverProvisioning(): number;
+  admitReconnect(
+    input: SubmitTurn,
+    newSessionId: string,
+    limits: { turnBudgetUsd: number; projectBudgetUsd: number; logDir: string },
+  ): Turn;
   close(): void;
 }

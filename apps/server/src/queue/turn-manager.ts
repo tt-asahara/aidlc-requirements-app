@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { RECONNECT_PROMPT } from "../prompts/index.ts";
 import {
   failedOutcome,
   type TurnEvent,
@@ -36,6 +37,25 @@ export class TurnManager {
       ...this.config,
       logDir: join(this.config.dataDir, "logs"),
     });
+    return this.launch(turn);
+  }
+  reconnect(projectId: string, submittedBy: string): Turn {
+    if (this.closed) throw new Error("Turn manager is closed");
+    return this.launch(
+      this.store.admitReconnect(
+        {
+          projectId,
+          submittedBy,
+          origin: "action",
+          action: "reconnect",
+          promptText: RECONNECT_PROMPT,
+        },
+        crypto.randomUUID(),
+        { ...this.config, logDir: join(this.config.dataDir, "logs") },
+      ),
+    );
+  }
+  private launch(turn: Turn): Turn {
     const controller = new AbortController();
     // Yield one microtask so the caller can subscribe or cancel a queued turn.
     const promise = Promise.resolve()

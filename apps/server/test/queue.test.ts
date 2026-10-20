@@ -354,7 +354,10 @@ test("I5: denial evidence is project scoped, deduplicated and never grants wildc
   await queue.wait(queue.submit(f.input()).id);
   expect(f.store.permissionRequests("p1")).toHaveLength(2);
   expect(
-    f.store.permissionRequests("p1").map((request) => request.rule),
+    f.store
+      .permissionRequests("p1")
+      .map((request) => request.rule)
+      .sort(),
   ).toEqual(["", "Bash(git status)"]);
   expect(f.store.permissionRequests("p2")).toHaveLength(0);
   expect(f.store.approvedRules("p1")).toEqual([]);
