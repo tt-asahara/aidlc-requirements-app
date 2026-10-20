@@ -18,8 +18,8 @@ export function App() {
         アイデアを、要件へ。
       </h1>
       <p className="mt-5 leading-8 text-slate-600">
-        要件定義アプリの開発用ワークスペースです。 現在は M0 の土台と API
-        接続を確認できます。
+        要件定義アプリの開発用ワークスペースです。現在は API 接続と AI-DLC
+        の準備状態を確認できます。
       </p>
       <section
         aria-labelledby="health-title"
@@ -53,7 +53,7 @@ export function App() {
           )}
         </div>
         <p className="mt-5 text-sm leading-6 text-slate-500">
-          AI-DLC の取り込みと会話機能は、後続のマイルストーンで追加します。
+          会話機能は、後続のマイルストーンで追加します。
         </p>
       </section>
     </main>

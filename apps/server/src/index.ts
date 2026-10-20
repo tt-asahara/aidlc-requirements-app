@@ -1,9 +1,13 @@
-import { readPort } from "./config";
+import { APP_ROOT, readConfig } from "./config";
 import { app } from "./http/app";
+import { requireAidlcReady } from "./workspace/aidlc";
+
+requireAidlcReady(APP_ROOT);
+const config = readConfig(process.env);
 
 const server = Bun.serve({
   hostname: "127.0.0.1",
-  port: readPort(process.env),
+  port: config.port,
   fetch: app.fetch,
 });
 
