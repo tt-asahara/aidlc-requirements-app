@@ -565,11 +565,17 @@ type Progress = {
 - モックアップの HTML は `<iframe sandbox="allow-scripts">` で表示します。`allow-same-origin` は付けません。
 - モックアップは同じフォルダの CSS や画像を相対パスで読むことがあります。クエリ文字列でパスを渡すと相対パスが壊れるので、
   パス形式の配信ルート `GET /raw/:token/<ファイルパス>` を使います。
-- sandbox の iframe は不透明なオリジンになるので、そこからの読み込みにはアプリの Cookie が送られません。
-  そのため `:token` に、プロジェクト ID、対象フォルダ、有効期限（10分）を含む署名付きトークンを入れて認可します。
-  トークンは `GET /api/projects/:id/preview-token?dir=` で発行します。署名鍵は起動時に生成し、メモリだけに持ちます。
-- 配信時に `Content-Security-Policy: sandbox allow-scripts; default-src 'self' 'unsafe-inline' data:` を付けます。
-- アプリの Cookie やトークンが iframe から読めないこと、相対パスの CSS が効くことを E2E で確かめます。
+- `:token` はプロジェクト ID、所有者 ID、対象フォルダ、有効期限（10分）を持つ署名付きの読み取り専用 bearer capability とします。
+  トークンは所有者を確認した `GET /api/projects/:id/preview-token?dir=` で発行し、署名鍵は起動時に生成してメモリだけに持ちます。
+  `/raw` は Cookie や開発用ユーザーヘッダーでは認可せず、署名・期限・現在の所有者・フォルダ境界を毎回確認します。GET/HEAD 以外は拒否します。
+- 不透明オリジンは親 DOM / document.cookie へのアクセスを隔離しますが、HTTP の Cookie 送信を一律に止める根拠にはしません。
+  URL 内の token はモックアップ自身の `location.href` から読めるため、秘匿できるとは扱いません。token を API の認証や書き込みには使いません。
+- CSP は `sandbox allow-scripts; default-src 'none'` を基準に、同じ token / フォルダ配下の script・style・image・font・media 資源だけを許可します。
+  inline script / style と data の画像・font は表示に必要な範囲で許可し、connect・form-action・frame・object・base は禁止します。
+  `Referrer-Policy: no-referrer`、`Cache-Control: no-store`、`X-Content-Type-Options: nosniff` を付け、URL をアクセスログに保存しません。
+  opaque origin からの font / module 資源に必要な CORS は署名付き `/raw` の GET/HEAD のみに `Access-Control-Allow-Origin: *` を許可し、credentials は許可しません。API の CORS は開きません。
+- E2E では、親 DOM / Cookie を読めないこと、token が自身の URL から読めること、相対 CSS が効くこと、token が期限・改ざん・フォルダ越境・他プロジェクト・API 認証に使えないことを確かめます。
+  この境界はネットワーク完全隔離ではありません。モックアップが既に表示権限を得た内容や token の転送を完全に防ぐ保証はせず、フェーズ2の egress / tenant 隔離とは分けます。
 
 ### 9.4 設計書
 
@@ -582,6 +588,11 @@ type Progress = {
 ## 10. API
 
 すべて JSON です。認証は `AuthProvider` が付けた `userId` を使います。
+フェーズ1の開発実装は、設定済み利用者の `X-AIDLC-User` ヘッダーを必須にします。暗黙の dev 利用者や Cookie / preview token による API ログインは行いません。
+API の全プロジェクト・ターン・許可・成果物操作で所有者を確認し、他人の ID は 404 とします。
+localhost の開発用途に限定し、Host は設定したループバックの API / Vite ポートのみ、Origin があればその同じ開発 origin のみ受け付けます。
+`Origin: null`、外部 Origin、cross-site / same-site の browser fetch、CORS preflight は拒否し、CORS を開きません。
+開発ヘッダーは本人性を強く保証する認証ではなく、外部公開・テナント利用には使いません。
 
 | メソッド | パス | 内容 |
 |---|---|---|
