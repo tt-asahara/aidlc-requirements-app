@@ -5,12 +5,13 @@ import { create } from "./helpers.ts";
 test("server artifacts: design/coverage → relative HTML/CSS → sandbox isolation → ZIP", async ({
   page,
   context,
+  baseURL,
 }) => {
   await context.addCookies([
     {
       name: "fixture_cookie",
       value: "private_fixture",
-      url: "http://127.0.0.1:19331",
+      url: baseURL ?? "http://127.0.0.1:19331",
     },
   ]);
   let externalRequests = 0;
@@ -129,7 +130,7 @@ test("project switch scopes previews, and a lost API identity hides cached artif
   await page.getByRole("dialog").getByRole("textbox").fill("M6 所有者 B");
   await page.getByRole("button", { name: "作成する", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "M6 所有者 B", exact: true }),
+    page.getByRole("heading", { name: "M6 所有者 B", level: 1, exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "モックアップ", exact: true }).click();
   const iframe = page.locator('iframe[title="HTML モックアップ"]');

@@ -9,7 +9,7 @@ const runtime = await createRuntime(config);
 const app = createApp(APP_ROOT, runtime);
 
 const server = Bun.serve({
-  hostname: "127.0.0.1",
+  hostname: config.bindAddress,
   port: config.port,
   fetch: app.fetch,
 });

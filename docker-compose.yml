@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    init: true
+    ports:
+      - "127.0.0.1:${AIDLC_APP_DOCKER_PORT:-15178}:8787"
+    environment:
+      WEB_PORT: ${AIDLC_APP_DOCKER_PORT:-15178}
+      AIDLC_APP_RUNNER: fake
+      AIDLC_APP_FAKE_SCENARIO: requirements
+      AIDLC_APP_DEV_USERS: dev,other
+    volumes:
+      - app-data:/var/lib/aidlc-app
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:8787/api/health');if(!r.ok)process.exit(1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+volumes:
+  app-data:

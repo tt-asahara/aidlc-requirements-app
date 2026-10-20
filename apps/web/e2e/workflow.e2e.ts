@@ -83,7 +83,7 @@ test("double clicks, reload, SSE GET reconnect and cancellation never create an 
 test("navigation and project switch keep server execution and isolate drafts and identity", async ({
   page,
 }) => {
-  await create(page, "M5 プロジェクト A");
+  const idA = await create(page, "M5 プロジェクト A");
   const a = page.url();
   await start(page);
   await page
@@ -95,22 +95,19 @@ test("navigation and project switch keep server execution and isolate drafts and
   await page.getByRole("dialog").getByRole("textbox").fill("M5 プロジェクト B");
   await page.getByRole("button", { name: "作成する", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "M5 プロジェクト B", exact: true }),
+    page.getByRole("heading", {
+      name: "M5 プロジェクト B",
+      level: 1,
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(page.getByTestId("turn-1")).toHaveCount(0);
+  const idB = new URL(page.url()).searchParams.get("project");
   await page.getByLabel("返答", { exact: true }).fill("B の未送信下書き");
   await page
     .getByRole("button", { name: "← プロジェクト一覧", exact: true })
     .click();
-  await page
-    .locator(".project-card")
-    .filter({
-      has: page.getByRole("heading", {
-        name: "M5 プロジェクト A",
-        exact: true,
-      }),
-    })
-    .click();
+  await page.getByTestId(`project-${idA}`).click();
   await expect(
     page.getByRole("button", { name: "1. 個人用で進める", exact: true }),
   ).toBeEnabled();
@@ -118,15 +115,7 @@ test("navigation and project switch keep server execution and isolate drafts and
   await page
     .getByRole("button", { name: "← プロジェクト一覧", exact: true })
     .click();
-  await page
-    .locator(".project-card")
-    .filter({
-      has: page.getByRole("heading", {
-        name: "M5 プロジェクト B",
-        exact: true,
-      }),
-    })
-    .click();
+  await page.getByTestId(`project-${idB}`).click();
   await expect(page.getByLabel("返答", { exact: true })).toHaveValue(
     "B の未送信下書き",
   );
@@ -146,7 +135,7 @@ test("navigation and project switch keep server execution and isolate drafts and
 test("failed send during navigation unlocks only that project's draft and never retries POST", async ({
   page,
 }) => {
-  await create(page, "M5 移動中の送信失敗");
+  const projectId = await create(page, "M5 移動中の送信失敗");
   await start(page);
   await expect(
     page.getByRole("button", { name: "1. 個人用で進める", exact: true }),
@@ -166,15 +155,7 @@ test("failed send during navigation unlocks only that project's draft and never 
   await page
     .getByRole("button", { name: "← プロジェクト一覧", exact: true })
     .click();
-  await page
-    .locator(".project-card")
-    .filter({
-      has: page.getByRole("heading", {
-        name: "M5 移動中の送信失敗",
-        exact: true,
-      }),
-    })
-    .click();
+  await page.getByTestId(`project-${projectId}`).click();
   await expect(
     page.getByRole("button", { name: "送信", exact: true }),
   ).toBeEnabled();

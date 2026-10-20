@@ -286,6 +286,7 @@ export function ConnectedApp() {
                 type="button"
                 className="project-card"
                 key={project.id}
+                data-testid={`project-${project.id}`}
                 onClick={() => select(project.id)}
               >
                 <span className="mode-tag">{modeLabel(project)}</span>

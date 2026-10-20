@@ -1,0 +1,9 @@
+[
+  {
+    "origin": "action",
+    "action": "start_round",
+    "requirement": "架空の個人用メモ一覧です。テキストの追加・一覧・削除を検討します。業務情報や実在の人のデータは使いません。コード生成は不要です。"
+  },
+  { "origin": "option", "optionLabel": "1. 個人用で進める" },
+  { "origin": "option", "optionLabel": "1. このスコープを承認する" }
+]
