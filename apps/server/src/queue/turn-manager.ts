@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { ExpectedContext } from "@aidlc/shared";
 import { RECONNECT_PROMPT } from "../prompts/index.ts";
+import { validateContext } from "../reader/context.ts";
 import {
   failedOutcome,
   type TurnEvent,
@@ -39,7 +41,7 @@ export class TurnManager {
       ...this.config,
       logDir: join(this.config.dataDir, "logs"),
     });
-    return this.launch(turn);
+    return this.launch(turn, input.expectedContext);
   }
   reconnect(projectId: string, submittedBy: string): Turn {
     if (this.closed) throw new Error("Turn manager is closed");
@@ -57,11 +59,11 @@ export class TurnManager {
       ),
     );
   }
-  private launch(turn: Turn): Turn {
+  private launch(turn: Turn, expectedContext?: ExpectedContext): Turn {
     const controller = new AbortController();
     // Yield one microtask so the caller can subscribe or cancel a queued turn.
     const promise = Promise.resolve()
-      .then(() => this.execute(turn, controller.signal))
+      .then(() => this.execute(turn, controller.signal, expectedContext))
       .finally(() => {
         this.active.delete(turn.id);
       });
@@ -94,7 +96,11 @@ export class TurnManager {
     );
     this.listeners.clear();
   }
-  private async execute(turn: Turn, signal: AbortSignal) {
+  private async execute(
+    turn: Turn,
+    signal: AbortSignal,
+    expectedContext?: ExpectedContext,
+  ) {
     if (signal.aborted) {
       this.store.finishTurn(
         turn.id,
@@ -131,6 +137,12 @@ export class TurnManager {
         });
         return;
       }
+      if (expectedContext)
+        await validateContext(this.store, project, expectedContext, {
+          id: turn.id,
+          seq: turn.seq,
+        });
+      if (signal.aborted) throw new Error("Cancelled before CLI started");
       invoked = true;
       const outcome = await this.runner.run(
         {
@@ -164,11 +176,13 @@ export class TurnManager {
         signal,
       );
       this.store.finishTurn(turn.id, outcome);
-    } catch {
+    } catch (error) {
       // No settings, prompt, credentials or command details in this diagnostic.
       this.store.finishTurn(turn.id, {
         ...failedOutcome(
-          "Turn execution failed; inspect the redacted turn log",
+          error instanceof Error && error.message.startsWith("CONTEXT_STALE")
+            ? error.message
+            : "Turn execution failed; inspect the redacted turn log",
         ),
         ...(invoked ? {} : { sessionCostUsd: 0, numTurns: 0 }),
       });

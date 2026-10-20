@@ -40,7 +40,7 @@ export type ArtifactEntry = {
   displayable: boolean;
 };
 
-export type SendTurn =
+export type TurnContent =
   | { origin: "typed"; text: string }
   | { origin: "option"; optionLabel: string }
   | { origin: "action"; action: "start_round"; requirement: string }
@@ -48,6 +48,10 @@ export type SendTurn =
       origin: "action";
       action: "update_doc" | "rebuild_doc" | "reopen_requirements";
     };
+export type SendTurn = TurnContent & {
+  expectedContext?: import("./mockups.ts").ExpectedContext;
+  purpose?: "mockup_revision";
+};
 export type ProjectSummary = {
   executionMode: "unknown" | "fake" | "claude";
   fakeScenario: "requirements" | null;
@@ -102,4 +106,13 @@ export type PermissionView = {
 };
 
 export { parseCoverage } from "./coverage.ts";
+export type {
+  ExecutionContext,
+  ExpectedContext,
+  MockupContract,
+  MockupMapping,
+  MockupReference,
+  MockupStage,
+  MockupsResponse,
+} from "./mockups.ts";
 export { extractOptions } from "./options.ts";

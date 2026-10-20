@@ -398,3 +398,49 @@ test("runtime selection is model-free at construction, recovers interrupted turn
     await runtime.close();
   }
 });
+
+test("V2 pre-CLI stale releases only its reservation and preserves cumulative 5 → 7 delta 2", async () => {
+  const f = await setup();
+  const first = f.store.admitTurn(f.input(), f.limits);
+  f.store.markRunning(first.id);
+  f.store.finishTurn(first.id, success(5));
+  const pending = f.store.admitTurn(f.input(), f.limits);
+  f.store.markRunning(pending.id);
+  f.store.finishTurn(pending.id, failedOutcome("unknown cost"));
+  let calls = 0;
+  const queue = f.manager({
+    run: async () => {
+      calls++;
+      return success(7);
+    },
+  });
+  const expectedContext = {
+    space: "default",
+    activeIntent: null,
+    currentStage: null,
+    latestTurn: { id: pending.id, seq: pending.seq },
+  };
+  const stale = queue.submit({ ...f.input(), expectedContext });
+  await mkdir(join(f.workspace, "aidlc"), { recursive: true });
+  await writeFile(join(f.workspace, "aidlc/active-space"), "changed");
+  await queue.wait(stale.id);
+  expect(calls).toBe(0);
+  expect(f.store.getTurn(stale.id)).toMatchObject({
+    turnCostUsd: 0,
+    sessionCostUsd: null,
+    reservedCostUsd: 0,
+  });
+  expect(f.store.projectCosts("p1")).toEqual({
+    reportedUsd: 5,
+    reservedUsd: 5,
+  });
+  expect(f.store.getTurn(pending.id)?.reservedCostUsd).toBe(5);
+  await writeFile(join(f.workspace, "aidlc/active-space"), "default");
+  const last = queue.submit(f.input());
+  await queue.wait(last.id);
+  expect(f.store.getTurn(last.id)?.turnCostUsd).toBe(2);
+  expect(f.store.projectCosts("p1")).toEqual({
+    reportedUsd: 7,
+    reservedUsd: 0,
+  });
+});

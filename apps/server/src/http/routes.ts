@@ -13,7 +13,14 @@ import {
   listArtifacts,
   readArtifact,
 } from "../reader/artifacts.ts";
+import {
+  executionContext,
+  parseExpectedContext,
+  stale,
+  validateContext,
+} from "../reader/context.ts";
 import { artifactMime } from "../reader/mime.ts";
+import { readMockups } from "../reader/mockups.ts";
 import { ReaderError, resolveInside } from "../reader/paths.ts";
 import {
   createPreviewTokens,
@@ -50,7 +57,15 @@ export function projectRoutes(deps: ApiDependencies) {
   const tokens = createPreviewTokens();
   app.onError((error, c) => {
     if (error instanceof ReaderError || error instanceof TurnAdmissionError)
-      return c.json({ error: error.message }, error.status);
+      return c.json(
+        {
+          error: error.message,
+          ...(error.message.startsWith("CONTEXT_STALE")
+            ? { code: "CONTEXT_STALE" }
+            : {}),
+        },
+        error.status,
+      );
     if (error instanceof PromptError || error instanceof SyntaxError)
       return c.json({ error: "入力を確認してください。" }, 400);
     return c.json({ error: "処理に失敗しました。" }, 500);
@@ -207,6 +222,20 @@ export function projectRoutes(deps: ApiDependencies) {
         : progress,
     );
   });
+  app.get("/api/projects/:id/context", async (c) => {
+    const project = ownProject(c.req.param("id"), c.get("userId"));
+    if (project.status !== "ready")
+      throw new TurnAdmissionError(409, "Project is not ready");
+    return c.json(await executionContext(store, project));
+  });
+  app.get("/api/projects/:id/mockups", async (c) => {
+    const project = ownProject(c.req.param("id"), c.get("userId"));
+    if (project.status !== "ready")
+      throw new TurnAdmissionError(409, "Project is not ready");
+    return c.json(
+      await readMockups(project.workspaceDir, c.req.query("intent") ?? ""),
+    );
+  });
   app.get("/api/projects/:id/turns", (c) => {
     const limitRaw = c.req.query("limit") ?? "50";
     const beforeRaw = c.req.query("before");
@@ -232,15 +261,39 @@ export function projectRoutes(deps: ApiDependencies) {
     });
   });
   app.post("/api/projects/:id/turns", async (c) => {
-    executionProject(c.req.param("id"), c.get("userId"));
-    const previous =
-      store.listTurns(c.req.param("id")).at(-1)?.resultText ?? "";
-    const input = toPrompt(await json(c.req.raw), previous);
+    const project = executionProject(c.req.param("id"), c.get("userId"));
+    const body = await json(c.req.raw);
+    const expectedContext = parseExpectedContext(
+      (body as { expectedContext?: unknown } | null)?.expectedContext,
+    );
+    // Read the body first, then freeze exactly the response cursor used to interpret an option.
+    const previous = store.listTurns(project.id).at(-1);
+    if (expectedContext) {
+      if (
+        (previous?.id ?? null) !== (expectedContext.latestTurn?.id ?? null) ||
+        (previous?.seq ?? null) !== (expectedContext.latestTurn?.seq ?? null)
+      )
+        throw stale();
+      await validateContext(store, project, expectedContext);
+    }
+    const input = toPrompt(body, previous?.resultText ?? "");
+    const purpose = (body as { purpose?: unknown }).purpose;
+    if (purpose !== undefined && purpose !== "mockup_revision")
+      throw new PromptError("Invalid purpose");
+    if (
+      purpose === "mockup_revision" &&
+      (input.origin !== "typed" || !expectedContext?.reference)
+    )
+      throw new PromptError("Mockup revision requires reference context");
+    if (expectedContext && input.origin === "typed")
+      input.promptText = (body as { text: string }).text;
+
     return c.json(
       {
         turn: publicTurn(
           turns.submit({
             ...input,
+            ...(expectedContext ? { expectedContext } : {}),
             projectId: c.req.param("id"),
             submittedBy: c.get("userId"),
           }),

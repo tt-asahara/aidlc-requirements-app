@@ -742,3 +742,50 @@ test("reconnect admission failure rolls the UUID change back atomically", async 
   expect(f.store.getProject(id)?.claudeSessionId).toBe(before);
   expect(f.store.listTurns(id)).toHaveLength(2);
 });
+
+test("V2 context: same option labels from stale questions are rejected after the earlier turn finishes", async () => {
+  let calls = 0;
+  const f = await setup({ run: async () => success(++calls) });
+  const id = await f.create();
+  const url = `/api/projects/${id}`;
+  const context = async () => (await f.request(`${url}/context`)).json();
+  const old = await context();
+  const first = await f.request(`${url}/turns`, {
+    json: { origin: "typed", text: "first", expectedContext: old },
+  });
+  await f.turns.wait((await first.json()).turn.id);
+  const tab1 = await context();
+  const tab2 = await context();
+  expect(tab1).toEqual(tab2);
+  const second = await f.request(`${url}/turns`, {
+    json: { origin: "option", optionLabel: "1. 続ける", expectedContext: tab1 },
+  });
+  expect(second.status).toBe(202);
+  await f.turns.wait((await second.json()).turn.id);
+  const stale = await f.request(`${url}/turns`, {
+    json: { origin: "option", optionLabel: "1. 続ける", expectedContext: tab2 },
+  });
+  expect(stale.status).toBe(409);
+  expect((await stale.json()).code).toBe("CONTEXT_STALE");
+  expect(calls).toBe(2);
+  expect(f.store.listTurns(id)).toHaveLength(2);
+  expect((await f.request(`${url}/context`, { user: "other" })).status).toBe(
+    404,
+  );
+  expect(
+    (await f.request(`${url}/mockups?intent=round-1`, { user: "other" }))
+      .status,
+  ).toBe(404);
+  expect((await f.request(`${url}/mockups?intent=round-1`)).status).toBe(200);
+  expect(
+    (
+      await f.request(`${url}/turns`, {
+        json: {
+          origin: "typed",
+          text: "x",
+          expectedContext: { ...tab2, unknown: 1 },
+        },
+      })
+    ).status,
+  ).toBe(400);
+});
