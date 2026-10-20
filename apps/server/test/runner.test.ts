@@ -280,3 +280,21 @@ test("I2: abrupt server death disconnects the watchdog and stops the CLI group",
     }
   }
 }, 20_000);
+
+test("reconnect requires the actual execution-error subtype, not a similar phrase in another failure", () => {
+  const parse = (subtype: string) => {
+    const parser = new StreamJsonParser(() => {});
+    parser.accept({
+      type: "result",
+      subtype,
+      errors: [
+        "No conversation found with session ID: 00000000-0000-4000-8000-000000000001",
+      ],
+      total_cost_usd: 0,
+      num_turns: 0,
+    });
+    return parser.finish(1);
+  };
+  expect(isMissingSession(parse("error_during_execution"))).toBe(true);
+  expect(isMissingSession(parse("error_max_turns"))).toBe(false);
+});

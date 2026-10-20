@@ -597,7 +597,7 @@ test("reconnect is explicit, only after missing-session failure, and atomically 
       return inputs.length === 1
         ? {
             ...failedOutcome(
-              `No conversation found with session ID: ${input.claudeSessionId}`,
+              `error_during_execution: No conversation found with session ID: ${input.claudeSessionId}`,
             ),
             numTurns: 0,
             sessionCostUsd: 0,
@@ -698,4 +698,40 @@ test("402 blocks a new API turn once reported cost exceeds the project estimate 
     ).status,
   ).toBe(402);
   expect(calls).toBe(1);
+});
+
+test("reconnect admission failure rolls the UUID change back atomically", async () => {
+  const f = await setup();
+  const id = await f.create();
+  const owner = f.auth.users()[0]?.id ?? "";
+  const submit = {
+    projectId: id,
+    submittedBy: owner,
+    origin: "typed" as const,
+    promptText: "synthetic setup",
+  };
+  const limits = {
+    turnBudgetUsd: 5,
+    projectBudgetUsd: 20,
+    logDir: join(f.dataDir, "logs"),
+  };
+  const expensive = f.store.admitTurn(submit, limits);
+  f.store.markRunning(expensive.id);
+  f.store.finishTurn(expensive.id, success(11));
+  const missing = f.store.admitTurn(submit, limits);
+  f.store.markRunning(missing.id);
+  f.store.finishTurn(missing.id, {
+    ...failedOutcome(
+      `error_during_execution: No conversation found with session ID: ${missing.claudeSessionId}`,
+    ),
+    numTurns: 0,
+    sessionCostUsd: 0,
+  });
+  const before = f.store.getProject(id)?.claudeSessionId;
+  expect(
+    (await f.request(`/api/projects/${id}/reconnect`, { method: "POST" }))
+      .status,
+  ).toBe(402);
+  expect(f.store.getProject(id)?.claudeSessionId).toBe(before);
+  expect(f.store.listTurns(id)).toHaveLength(2);
 });

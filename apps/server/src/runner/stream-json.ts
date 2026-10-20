@@ -12,9 +12,13 @@ const nonnegative = (input: unknown): number | null =>
   typeof input === "number" && Number.isFinite(input) && input >= 0
     ? input
     : null;
-export function isMissingSession(outcome: TurnOutcome): boolean {
+export function isMissingSession(outcome: {
+  status: string;
+  errorMessage: string | null;
+}): boolean {
   return (
     outcome.status === "failed" &&
+    outcome.errorMessage?.startsWith(`${RESULT_EXECUTION_ERROR}:`) === true &&
     /No conversation found with session ID: [\da-f-]{36}/i.test(
       outcome.errorMessage ?? "",
     )
@@ -98,10 +102,7 @@ export class StreamJsonParser {
       errorMessage:
         status === "succeeded"
           ? null
-          : errors ||
-            (typeof row.result === "string"
-              ? row.result
-              : String(row.subtype ?? "Unknown CLI error")),
+          : `${String(row.subtype ?? "unknown")}: ${errors || (typeof row.result === "string" ? row.result : "CLI error")}`,
     };
   }
   finish(exitCode: number): TurnOutcome {

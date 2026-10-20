@@ -1,5 +1,6 @@
 import type { PermissionView, ProjectSummary, PublicTurn } from "@aidlc/shared";
 import { commandWarnings, exactRule } from "../permissions/rules.ts";
+import { isMissingSession } from "../runner/stream-json.ts";
 import type { PermissionRow, Project, Store, Turn } from "../store/types.ts";
 export function publicTurn(turn: Turn): PublicTurn {
   const {
@@ -20,11 +21,7 @@ export function projectView(project: Project, store: Store): ProjectSummary {
     createdAt: project.createdAt,
     updatedAt: last?.finishedAt ?? last?.createdAt ?? project.createdAt,
     cost: store.projectCosts(project.id),
-    reconnectAvailable:
-      last?.status === "failed" &&
-      /No conversation found with session ID: [\da-f-]{36}/i.test(
-        last.errorMessage ?? "",
-      ),
+    reconnectAvailable: last ? isMissingSession(last) : false,
   };
 }
 export function permissionView(row: PermissionRow): PermissionView {

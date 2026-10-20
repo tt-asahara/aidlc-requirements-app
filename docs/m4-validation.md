@@ -15,7 +15,7 @@ M3 は PR #8、実装前の権限制約は PR #9 でマージ済み。全 API �
 
 作成は 202 後に公式 provisioner を呼ぶ。エラー末尾を制限・伏せ字処理し、失敗と再起動中断は error にする。再起動で自動作成や再送をしない。
 型付き SendTurn を prompts モジュールで検証し、typed は前後の空白除去だけ、action は固定文字列、option は直前の最後の連続ブロックの番号だけを保存して送る。
-再接続はセッション不在を確認した後の明示 POST のみ。UUID 更新と admission を一つの transaction にし、予算・同時実行の失敗では UUID を変えない。
+再接続は error_during_execution とセッション不在の文言の両方を確認した後の明示 POST のみ。UUID 更新と admission を一つの transaction にし、予算・同時実行の失敗では UUID を変えない。
 ターン一覧は新しい順の before / limit ページング。SSE は実行中の一時イベントと完了結果を返し、切断した購読者の除去やバックプレッシャー上限を持つ。
 
 許可は API からの本人の操作だけで状態・決定者・時刻を記録する。単純な Bash 完全一致だけを認め、複雑な構文・wildcard・入力単位の非 Bash は approve 422。
@@ -29,7 +29,7 @@ API 認証ヘッダーや Cookie へ権限を変換しない。token は URL か
 
 ## 検証結果
 
-- Mac / Bun 1.3.14: lint、strict 型検査、全テスト、Web build、git diff --check を確認。最終件数は PR に記載。
+- Mac / Bun 1.3.14: lint、strict 型検査、全テスト、Web build、git diff --check を確認。119 テスト / 435 assertions。
 - 全 project エンドポイントの他 owner 拒否、子資源の別 project 拒否、Origin/Host/preflight、正常・異常入力、action / option、ページング、402 / 409、中止と SSE の tool_use / completed、許可監査・取消・自動送信なし、明示再接続をモデル不要で検証。
 - 正式リポジトリで API 18789 / Vite 15175 / 新規 `/tmp/aidlc-m4-http-data`、runner=fake を使い `bun run dev` と `bun scripts/api-smoke.ts` が成功。
 - 作成した ID: `01M5C76NFRNFN5PS4PRCPJZF8N`。公式 fresh-install → ready → 明示 start_round → succeeded → reply、履歴1件。録画費用 0.6305979 は実課金ではない。

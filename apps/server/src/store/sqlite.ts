@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { chmodSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { exactRule } from "../permissions/rules.ts";
+import { isMissingSession } from "../runner/stream-json.ts";
 import type { TurnOutcome } from "../runner/types.ts";
 import {
   type PermissionRow,
@@ -375,12 +376,7 @@ export class SqliteStore implements Store {
         if (!project || project.ownerId !== input.submittedBy)
           throw new TurnAdmissionError(404, "Project not found");
         const last = this.listTurns(project.id).at(-1);
-        if (
-          last?.status !== "failed" ||
-          !/No conversation found with session ID: [\da-f-]{36}/i.test(
-            last.errorMessage ?? "",
-          )
-        )
+        if (!last || !isMissingSession(last))
           throw new TurnAdmissionError(
             409,
             "Session reconnect is not available",
