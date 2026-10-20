@@ -277,6 +277,14 @@ export function projectRoutes(deps: ApiDependencies) {
       await validateContext(store, project, expectedContext);
     }
     const input = toPrompt(body, previous?.resultText ?? "");
+    if (
+      input.action === "reopen_requirements" &&
+      expectedContext?.activeIntent === null
+    )
+      throw new TurnAdmissionError(
+        409,
+        "再作業する現在のラウンドがありません。",
+      );
     const purpose = (body as { purpose?: unknown }).purpose;
     if (purpose !== undefined && purpose !== "mockup_revision")
       throw new PromptError("Invalid purpose");

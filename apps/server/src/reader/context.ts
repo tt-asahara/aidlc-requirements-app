@@ -138,7 +138,11 @@ export async function validateContext(
   expected: ExpectedContext,
   admitted?: { id: string; seq: number },
 ) {
-  const actual = await executionContext(store, project);
+  const readCurrent = () =>
+    executionContext(store, project).catch(() => {
+      throw stale();
+    });
+  const actual = await readCurrent();
   if (
     actual.space !== expected.space ||
     actual.activeIntent !== expected.activeIntent ||
@@ -172,7 +176,7 @@ export async function validateContext(
     } catch {
       throw stale();
     }
-    const after = await executionContext(store, project);
+    const after = await readCurrent();
     if (
       after.space !== expected.space ||
       after.activeIntent !== expected.activeIntent ||

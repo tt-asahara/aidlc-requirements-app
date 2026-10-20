@@ -821,7 +821,7 @@ function ProjectScreen({
               </button>
               <button
                 type="button"
-                disabled={!canSend}
+                disabled={!canSend || !progress.data?.active}
                 onClick={() =>
                   void send({ origin: "action", action: "reopen_requirements" })
                 }

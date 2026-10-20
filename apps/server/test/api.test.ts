@@ -936,3 +936,43 @@ test("V2 option parsing freezes the response after the request body completes", 
   await f.turns.wait(result.id);
   expect(f.store.getTurn(result.id)?.promptText).toBe("2");
 });
+
+test("unreadable execution state during guarded admission is stale, not a malformed user body", async () => {
+  const f = await setup();
+  const id = await f.create();
+  const expectedContext = await (
+    await f.request(`/api/projects/${id}/context`)
+  ).json();
+  const project = f.store.getProject(id);
+  if (!project) throw new Error("missing project");
+  await writeFile(
+    join(project.workspaceDir, "aidlc/spaces/default/intents/intents.json"),
+    "[",
+  );
+  const response = await f.request(`/api/projects/${id}/turns`, {
+    json: { origin: "typed", text: "保持する本文", expectedContext },
+  });
+  expect(response.status).toBe(409);
+  expect((await response.json()).code).toBe("CONTEXT_STALE");
+  expect(f.store.listTurns(id)).toHaveLength(0);
+});
+
+test("context-aware reopen requires a current execution round and does not start an old intent", async () => {
+  const f = await setup();
+  const id = await f.create();
+  const project = f.store.getProject(id);
+  if (!project) throw new Error("missing project");
+  await writeFile(
+    join(project.workspaceDir, "aidlc/spaces/default/intents/active-intent"),
+    "",
+  );
+  const expectedContext = await (
+    await f.request(`/api/projects/${id}/context`)
+  ).json();
+  expect(expectedContext.activeIntent).toBeNull();
+  const response = await f.request(`/api/projects/${id}/turns`, {
+    json: { origin: "action", action: "reopen_requirements", expectedContext },
+  });
+  expect(response.status).toBe(409);
+  expect(f.store.listTurns(id)).toHaveLength(0);
+});
