@@ -474,7 +474,11 @@ export function projectRoutes(deps: ApiDependencies) {
       c.req.method === "HEAD" ? null : new Uint8Array(bytes).buffer,
       {
         headers: {
-          ...previewHeaders(new URL(c.req.url).origin, token, claims.dir),
+          ...previewHeaders(
+            `http://${c.req.header("Host") ?? new URL(c.req.url).host}`,
+            token,
+            claims.dir,
+          ),
           "Content-Type": artifactMime(path),
         },
       },

@@ -12,9 +12,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { api, subscribeEvents } from "../api/client.ts";
+import { ArtifactMarkdown, ArtifactPane } from "./ArtifactPane.tsx";
 import "./connected.css";
 
 const money = (n: number | null) =>
@@ -178,9 +177,9 @@ export function ConnectedApp() {
     addEventListener("popstate", pop);
     return () => removeEventListener("popstate", pop);
   }, []);
-  const current = projects.data?.projects.find(
-    (project) => project.id === selected,
-  );
+  const current = projects.error
+    ? undefined
+    : projects.data?.projects.find((project) => project.id === selected);
   const draftKey = `${user}/${selected}`;
   const createProject = async (name: string) => {
     if (createLock.current) return;
@@ -361,6 +360,7 @@ function ProjectScreen({
   updatePending: (key: string, value: string | null) => void;
 }) {
   const timelineEnd = useRef<HTMLDivElement>(null);
+  const [selectedFile, setSelectedFile] = useState("design-document/README.md");
   const client = useQueryClient();
   const prefix = useMemo(
     () => ["project", user, project.id],
@@ -722,17 +722,15 @@ function ProjectScreen({
                     AI-DLC{project.executionMode === "fake" ? " · 再生" : ""}
                   </strong>
                   {turn.resultText && (
-                    <ReactMarkdown
-                      skipHtml
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        img: ({ alt }) => (
-                          <span>画像: {alt ?? "成果物から開いてください"}</span>
-                        ),
+                    <ArtifactMarkdown
+                      text={turn.resultText}
+                      context={{
+                        user,
+                        projectId: project.id,
+                        space: progress.data?.space ?? "default",
+                        open: setSelectedFile,
                       }}
-                    >
-                      {turn.resultText}
-                    </ReactMarkdown>
+                    />
                   )}
                   {turn.errorMessage && (
                     <p className="turn-error">{turn.errorMessage}</p>
@@ -817,11 +815,14 @@ function ProjectScreen({
             </div>
           </form>
         </section>
-        <aside className="artifact-pane">
-          <p className="eyebrow">ARTIFACTS</p>
-          <h2>成果物</h2>
-          <p className="muted">成果物ビューアは準備中です。</p>
-        </aside>
+        <ArtifactPane
+          user={user}
+          projectId={project.id}
+          space={progress.data?.space ?? "default"}
+          selected={selectedFile}
+          open={setSelectedFile}
+          ready={project.status === "ready"}
+        />
       </main>
       {roundDialog && (
         <InputDialog
