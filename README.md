@@ -11,7 +11,7 @@ AIDLC_APP_RUNNER=fake AIDLC_APP_FAKE_SCENARIO=requirements bun run dev
 
 画面は http://127.0.0.1:5173 、API は http://127.0.0.1:8787/api/health です。
 既定は API 接続画面です。この起動例は合成シナリオでモデルを使いません。未接続デモは `?mode=demo` です。終了は Ctrl+C です。
-ポートが使用中の場合は `AIDLC_APP_DATA_DIR=../aidlc-app-data PORT=18787 WEB_PORT=15173 bun run dev` のように変更します。
+ポートが使用中の場合は `AIDLC_APP_RUNNER=fake AIDLC_APP_FAKE_SCENARIO=requirements PORT=18787 WEB_PORT=15173 bun run dev` のように変更します。
 `PORT` は API、`WEB_PORT` は開発画面のポートです。API のプロキシ先も追従します。
 
 起動・取得・導入には認証情報や `.env` は不要で、モデルを実行しません。
