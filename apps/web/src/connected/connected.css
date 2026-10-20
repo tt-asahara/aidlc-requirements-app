@@ -512,3 +512,137 @@
     max-height: 85dvh;
   }
 }
+.artifact-tabs,
+.zip-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.artifact-tabs button {
+  font-size: 12px;
+  flex: 1;
+}
+.artifact-tabs button[aria-pressed="true"] {
+  background: #e1f0e7;
+  border-color: #9cc8ae;
+}
+.zip-actions button {
+  font-size: 11px;
+  padding: 6px 9px;
+}
+.connected-file-tree {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+}
+.connected-file-tree .connected-file-tree {
+  padding-left: 13px;
+  margin: 0;
+}
+.connected-file-tree button {
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 5px 4px;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.connected-file-tree button[aria-current="true"] {
+  background: #e8f2eb;
+  font-weight: 600;
+}
+.artifact-path {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  color: #85998c;
+  border-top: 1px solid #dbe5df;
+  padding-top: 14px;
+  margin: 14px 0 12px;
+}
+.artifact-content {
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.artifact-content h1 {
+  font-size: 18px;
+  margin-bottom: 16px;
+}
+.artifact-content h2 {
+  font-size: 15px;
+  margin: 18px 0 12px;
+}
+.artifact-content p {
+  margin: 10px 0;
+}
+.artifact-content table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.artifact-content td,
+.artifact-content th {
+  border: 1px solid #d2dfd6;
+  padding: 5px;
+}
+.coverage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  font-size: 10px;
+  padding: 9px;
+  background: #eaf3ed;
+  border-radius: 5px;
+  margin-bottom: 14px;
+}
+.connected-app .artifact-link {
+  display: inline;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: #176b56;
+  text-decoration: underline;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.connected-app .code-link {
+  font-family: monospace;
+  font-size: 12px;
+}
+.artifact-image {
+  max-width: 100%;
+  height: auto;
+}
+.artifact-source {
+  overflow: auto;
+  white-space: pre-wrap;
+  font: 11px / 1.7 monospace;
+  background: white;
+  padding: 10px;
+  border: 1px solid #dbe6de;
+  border-radius: 6px;
+  max-height: 550px;
+}
+.html-preview iframe {
+  width: 100%;
+  min-height: 420px;
+  border: 1px solid #cbded0;
+  border-radius: 7px;
+  background: white;
+}
+.preview-controls {
+  font-size: 10px;
+  margin-bottom: 10px;
+}
+.preview-controls button {
+  margin-top: 5px;
+  padding: 5px 8px;
+  font-size: 10px;
+}
+@media (min-width: 1101px) {
+  .connected-workspace {
+    grid-template-columns: 230px minmax(350px, 1fr) 380px;
+  }
+}

@@ -101,4 +101,5 @@ export type PermissionView = {
   warnings: string[];
 };
 
+export { parseCoverage } from "./coverage.ts";
 export { extractOptions } from "./options.ts";

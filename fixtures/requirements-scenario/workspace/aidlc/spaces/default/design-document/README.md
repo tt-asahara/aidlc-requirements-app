@@ -13,3 +13,11 @@
 個人のメモを追加・一覧・削除できます。
 
 [モックアップ](../intents/fixture-round-1/mockups/index.html)
+
+## 表示安全性の合成ケース
+
+[実行不可のリンク](javascript:alert(1))
+
+![外部画像は自動取得しません](https://example.invalid/tracker.png)
+
+<script>window.PREVIEW_XSS = 1;</script>

@@ -51,9 +51,12 @@ export class FixtureWorkspaceStorage implements WorkspaceStorage {
     }
   }
 }
-const marker = (turn: Turn) =>
+const marker = (turn: Pick<Turn, "resultText">) =>
   /<!-- fixture:([a-z_]+) -->/.exec(turn.resultText ?? "")?.[1];
-export function scenarioProgress(base: Progress, turns: Turn[]): Progress {
+export function scenarioProgress(
+  base: Progress,
+  turns: Pick<Turn, "status" | "resultText" | "action" | "promptText">[],
+): Progress {
   const finished = turns.filter((turn) => turn.status === "succeeded");
   if (!finished.length)
     return {
@@ -67,6 +70,17 @@ export function scenarioProgress(base: Progress, turns: Turn[]): Progress {
         : "idle",
     };
   const last = [...finished].reverse().find((turn) => marker(turn) !== "doc");
+  if (!last)
+    return {
+      ...base,
+      intents: [],
+      active: null,
+      waitingFor: turns.some((turn) =>
+        ["queued", "running"].includes(turn.status),
+      )
+        ? "running"
+        : "reply",
+    };
   const state = last ? marker(last) : undefined;
   const slugs = [
     "intent-capture",

@@ -536,6 +536,13 @@ test("I9: files/ZIP/raw share exclusions and signed preview cannot authorize API
   expect(raw.headers.get("Content-Security-Policy")).not.toContain(
     "allow-same-origin",
   );
+  const proxied = await f.request(
+    `${basePath}intents/round-1/mockups/index.html`,
+    { user: null, headers: { Host: "127.0.0.1:5173" } },
+  );
+  expect(proxied.headers.get("Content-Security-Policy")).toContain(
+    "http://127.0.0.1:5173/raw/",
+  );
   expect(raw.headers.get("Access-Control-Allow-Origin")).toBe("*");
   expect(raw.headers.get("Referrer-Policy")).toBe("no-referrer");
   expect(

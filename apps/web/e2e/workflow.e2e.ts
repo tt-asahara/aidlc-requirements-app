@@ -1,29 +1,7 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-async function create(page: Page, name: string) {
-  await page.goto("/");
-  await page
-    .getByRole("button", { name: "＋ 新しいプロジェクト", exact: true })
-    .click();
-  await page.getByRole("dialog").getByRole("textbox").fill(name);
-  await page.getByRole("button", { name: "作成する", exact: true }).click();
-  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "新しい要件ラウンド", exact: true }),
-  ).toBeEnabled();
-}
-async function start(page: Page) {
-  await page
-    .getByRole("button", { name: "新しい要件ラウンド", exact: true })
-    .click();
-  await page
-    .getByRole("dialog")
-    .getByRole("textbox")
-    .fill("個人のメモ一覧を検討したいです。");
-  await page
-    .getByRole("button", { name: "ラウンドを開始", exact: true })
-    .click();
-}
+import { create, start } from "./helpers.ts";
+
 test("server-backed project → round → option reply → progress; mode and recorded costs are explicit", async ({
   page,
 }) => {

@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { APP_ROOT, readConfig } from "../src/config.ts";
 import { createApp } from "../src/http/app.ts";
-import { FixtureWorkspaceStorage } from "../src/runner/scenario.ts";
+import {
+  FixtureWorkspaceStorage,
+  scenarioProgress,
+} from "../src/runner/scenario.ts";
 import { createRuntime } from "../src/runtime.ts";
 import { SqliteStore } from "../src/store/sqlite.ts";
 
@@ -174,4 +177,21 @@ test("I8: synthetic provisioning refuses a workspace-parent symlink", async () =
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("synthetic document-only update never invents a requirements Intent", () => {
+  const progress = scenarioProgress(
+    { space: "default", intents: [], active: null, waitingFor: "idle" },
+    [
+      {
+        status: "succeeded",
+        resultText: "<!-- fixture:doc -->",
+        action: "update_doc",
+        promptText: "/aidlc --doc",
+      },
+    ],
+  );
+  expect(progress.intents).toEqual([]);
+  expect(progress.active).toBeNull();
+  expect(progress.waitingFor).toBe("reply");
 });
