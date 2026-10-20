@@ -1,0 +1,10 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "result": "## スコープを確認します\n\n追加・一覧・削除だけを対象にします。承認しますか？\n\n1. このスコープを承認する\n2. 内容を修正する\n\n<!-- fixture:scope -->",
+  "total_cost_usd": 0.01,
+  "num_turns": 1,
+  "permission_denials": [],
+  "fixture_kind": "synthetic requirements"
+}

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { ConnectedApp } from "./connected/ConnectedApp.tsx";
 import "./styles.css";
 
 const root = document.getElementById("root");
@@ -11,7 +12,11 @@ const queryClient = new QueryClient();
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      {new URLSearchParams(location.search).get("mode") === "demo" ? (
+        <App />
+      ) : (
+        <ConnectedApp />
+      )}
     </QueryClientProvider>
   </StrictMode>,
 );

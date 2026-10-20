@@ -1,0 +1,17 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "result": "## コマンドの許可が必要です\n\n`git status` はまだ実行していません。許可または拒否を選んでください。許可後も、送信ボタンを押すまで続行しません。\n\n<!-- fixture:denied -->",
+  "total_cost_usd": 0.01,
+  "num_turns": 1,
+  "permission_denials": [
+    {
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "git status"
+      }
+    }
+  ],
+  "fixture_kind": "synthetic requirements"
+}

@@ -1,0 +1,10 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "result": "## 新しい作業ですか？\n\n1. 今の作業の続き\n2. 別の新しい作業\n3. 今の作業の形を変える\n\n<!-- fixture:round_choice -->",
+  "total_cost_usd": 0.01,
+  "num_turns": 1,
+  "permission_denials": [],
+  "fixture_kind": "synthetic requirements"
+}

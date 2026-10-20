@@ -20,10 +20,13 @@ export function createApp(repoRoot: string = APP_ROOT, deps?: ApiDependencies) {
     const aidlc = readAidlcReadiness(repoRoot);
     const health: HealthResponse = {
       status: "ok",
-      milestone: deps ? "M4" : "M3",
+      milestone: deps ? "M5" : "M3",
       aidlc: { sha: aidlc.sha, ready: aidlc.ready },
     };
-    if (deps) health.runner = deps.config.runner;
+    if (deps) {
+      health.runner = deps.config.runner;
+      health.fakeScenario = deps.config.fakeScenario;
+    }
     return c.json(health);
   });
 

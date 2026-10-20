@@ -166,7 +166,9 @@ export function App() {
             · 実モデル未接続 / 外部送信なし / 課金なし
           </span>
         </p>
-        <span className="session-note">再読み込みで初期化</span>
+        <span className="session-note">
+          再読み込みで初期化 · <a href="?">API 接続へ</a>
+        </span>
       </div>
       <header className="app-header">
         <button

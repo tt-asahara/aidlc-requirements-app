@@ -1,7 +1,8 @@
 export type HealthResponse = {
   status: "ok";
   runner?: "fake" | "claude";
-  milestone: "M0" | "M1" | "M2" | "M3" | "M4";
+  fakeScenario?: "requirements" | null;
+  milestone: "M0" | "M1" | "M2" | "M3" | "M4" | "M5";
   aidlc: {
     sha: string | null;
     ready: boolean;
@@ -48,6 +49,8 @@ export type SendTurn =
       action: "update_doc" | "rebuild_doc" | "reopen_requirements";
     };
 export type ProjectSummary = {
+  executionMode: "unknown" | "fake" | "claude";
+  fakeScenario: "requirements" | null;
   id: string;
   name: string;
   status: "provisioning" | "ready" | "error";
@@ -97,3 +100,5 @@ export type PermissionView = {
   approvable: boolean;
   warnings: string[];
 };
+
+export { extractOptions } from "./options.ts";

@@ -14,6 +14,8 @@ export function publicTurn(turn: Turn): PublicTurn {
 export function projectView(project: Project, store: Store): ProjectSummary {
   const last = store.listTurns(project.id).at(-1);
   return {
+    executionMode: project.executionMode,
+    fakeScenario: project.fakeScenario,
     id: project.id,
     name: project.name,
     status: project.status,

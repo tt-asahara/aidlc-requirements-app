@@ -1,0 +1,10 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "result": "## 作りたいものを確認します\n\n対象は個人用のメモ一覧でよいですか？\n\n1. 個人用で進める\n2. 要件を修正する\n\n<!-- fixture:capture -->",
+  "total_cost_usd": 0.01,
+  "num_turns": 1,
+  "permission_denials": [],
+  "fixture_kind": "synthetic requirements"
+}

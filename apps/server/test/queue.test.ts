@@ -44,6 +44,7 @@ async function setup() {
       id,
       name: id,
       ownerId: "dev",
+      executionMode: "fake",
       workspaceDir: workspace,
       aidlcSha: "a".repeat(40),
       claudeSessionId: sessionId,

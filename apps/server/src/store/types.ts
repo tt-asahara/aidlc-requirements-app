@@ -1,5 +1,7 @@
 import type { TurnOutcome, TurnStatus } from "../runner/types.ts";
 export type Project = {
+  executionMode: "unknown" | "fake" | "claude";
+  fakeScenario: "requirements" | null;
   id: string;
   name: string;
   ownerId: string;
@@ -57,18 +59,36 @@ export type PermissionRow = {
   decidedAt: string | null;
   createdAt: string;
 };
+export type TurnLimits = {
+  turnBudgetUsd: number;
+  projectBudgetUsd: number;
+  logDir: string;
+  executionMode?: "fake" | "claude";
+  fakeScenario?: "requirements" | null;
+};
 export interface Store {
   createUser(id: string, displayName: string): void;
   createProject(
     project: Omit<
       Project,
-      "createdAt" | "claudeSessionStarted" | "errorMessage"
-    >,
+      | "createdAt"
+      | "claudeSessionStarted"
+      | "errorMessage"
+      | "executionMode"
+      | "fakeScenario"
+    > &
+      Partial<Pick<Project, "executionMode" | "fakeScenario">>,
   ): void;
   getProject(id: string): Project | null;
   admitTurn(
     input: SubmitTurn,
-    limits: { turnBudgetUsd: number; projectBudgetUsd: number; logDir: string },
+    limits: {
+      turnBudgetUsd: number;
+      projectBudgetUsd: number;
+      logDir: string;
+      executionMode?: "fake" | "claude";
+      fakeScenario?: "requirements" | null;
+    },
   ): Turn;
   getTurn(id: string): Turn | null;
   listTurns(projectId: string): Turn[];
@@ -96,7 +116,13 @@ export interface Store {
   admitReconnect(
     input: SubmitTurn,
     newSessionId: string,
-    limits: { turnBudgetUsd: number; projectBudgetUsd: number; logDir: string },
+    limits: {
+      turnBudgetUsd: number;
+      projectBudgetUsd: number;
+      logDir: string;
+      executionMode?: "fake" | "claude";
+      fakeScenario?: "requirements" | null;
+    },
   ): Turn;
   close(): void;
 }

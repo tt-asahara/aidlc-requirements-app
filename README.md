@@ -1,24 +1,23 @@
 # AI-DLC 要件定義アプリ
 
-## ローカル起動（M4）
+## ローカル起動（M5）
 
 Bun 1.3.14 を用意し、リポジトリのルートで実行します。
 
 ```sh
 bun install
-bun scripts/fetch-aidlc.ts
-AIDLC_APP_RUNNER=fake AIDLC_APP_DATA_DIR=../aidlc-app-data bun run dev
+AIDLC_APP_RUNNER=fake AIDLC_APP_FAKE_SCENARIO=requirements bun run dev
 ```
 
 画面は http://127.0.0.1:5173 、API は http://127.0.0.1:8787/api/health です。
-画面は明示的な未接続デモです。API の稼働確認は上記の health URL で行います。終了は Ctrl+C です。
+既定は API 接続画面です。この起動例は合成シナリオでモデルを使いません。未接続デモは `?mode=demo` です。終了は Ctrl+C です。
 ポートが使用中の場合は `AIDLC_APP_DATA_DIR=../aidlc-app-data PORT=18787 WEB_PORT=15173 bun run dev` のように変更します。
 `PORT` は API、`WEB_PORT` は開発画面のポートです。API のプロキシ先も追従します。
 
 起動・取得・導入には認証情報や `.env` は不要で、モデルを実行しません。
 手動の M1 Bedrock 実地確認は `docs/cli-spike.md`、デモ単独起動と接続予定の境界は `apps/web/README.md` を参照してください。
 `fetch-aidlc.ts` は lock の SHA を `.cache/aidlc-src/` に取得し、Bun の依存と Claude 用ハーネス・ui-poc をビルドします。
-準備済みなら再実行は何もしません。準備がないと API は起動を停止し、fetch コマンドを案内します。
+準備済みなら再実行は何もしません。通常起動は準備がなければ停止します。明示した fake 合成シナリオだけは公式 AI-DLC を使わず、fixture だけで起動します。
 
 `AIDLC_APP_DATA_DIR` の既定は、計画修正 PR #4 に沿ってリポジトリ外の `../aidlc-app-data` です。DB、ログ、Claude セッションをここに保存します。`./data` などリポジトリ内のパスは拒否します。
 設定例と後工程の保留は `.env.example`、`docs/architecture.md`、`docs/plan-review.md` を参照してください。
@@ -41,7 +40,7 @@ bun test
 bun run build
 ```
 
-M4 では API の作成・会話送信・進捗・成果物・ZIP・許可・再接続まで実装済みです。画面は未接続デモで、API 接続は M5 です。
+M4 では API の作成・会話送信・進捗・成果物・ZIP・許可・再接続まで実装済みです。M5 の画面からプロジェクト作成・会話・進捗を操作できます。成果物表示と許可カードは後続です。
 `AIDLC_APP_RUNNER=fake` はモデル不要の録画再生です。health は runner を返し、録画費用を実課金として扱いません。
 同じデータディレクトリを複数の API サーバーで同時に開くことはできません。
 
@@ -56,3 +55,13 @@ AIDLC_APP_SMOKE_URL=http://127.0.0.1:18789 bun scripts/api-smoke.ts
 health 以外の API は `X-AIDLC-User: dev`（または設定済み利用者）を指定してください。localhost の開発用で、外部公開向けの認証ではありません。
 `bun scripts/preview-smoke.ts` は一時 Chrome プロファイルでプレビューの境界を検証します。`UI_POC_BROWSER_EXECUTABLE` でブラウザを指定できます。
 結果と制限は `docs/m3-validation.md`、`docs/m4-validation.md` に記載します。
+
+接続画面の検証:
+
+```sh
+bun run e2e
+# Linux の初回は bunx playwright install --with-deps chromium
+```
+
+E2E は専用の一時データと 19330 / 19331 を使い、既存データや 5274 のデモを変更しません。
+合成シナリオの制約と migration は `docs/m5-validation.md` を参照してください。実モデルの追加実行は価格・請求照合待ちです。
