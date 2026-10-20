@@ -3,7 +3,7 @@ RUN npm install --global @anthropic-ai/claude-code@2.1.304
 
 FROM oven/bun:1.3.14-debian
 COPY --from=cli /usr/local /usr/local
-RUN apt-get update && apt-get install -y --no-install-recommends git chromium chromium-sandbox ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends git chromium chromium-sandbox fonts-noto-cjk ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json bun.lock ./

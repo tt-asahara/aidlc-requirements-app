@@ -1,0 +1,9 @@
+{
+  "base": "Rancher Desktop 1.23.1 / Moby 29.5.2 / /etc/rancher-desktop/seccomp.json",
+  "baseRawSha256": "536529b665dd0972c37bfb569f5d4ac8a53592e7b00752bc39ff063ca9864c74",
+  "baseCanonicalSha256": "afb4934b023cfceaaec1a9d752ca3f801aaa96eb2e59abe6e7ea16976948e080",
+  "reference": "https://github.com/microsoft/playwright/blob/main/utils/docker/seccomp_profile.json",
+  "referenceRawSha256": "cc3e61cabda6bbc1e53e54d27ba4d55a9d3be829b6dd1a596f4a7b31b1cc7849",
+  "change": "Append one SCMP_ACT_ALLOW rule for clone, setns, unshare only; keep all existing policy fields and rules",
+  "scope": "aidlc-browser-validation container only"
+}
