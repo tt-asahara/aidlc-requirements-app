@@ -121,7 +121,9 @@ test("I1 / I3: explicit fake scenario uses DB turns for progress and never rewri
         .currentStage,
     ).toBe("scope-definition");
     await send({ origin: "option", optionLabel: "1. このスコープを承認する" });
-    const row = runtime.store.permissionRequests(id)[0];
+    const row = runtime.store
+      .permissionRequests(id)
+      .find((row) => row.rule === "Bash(git status)");
     expect(row?.rule).toBe("Bash(git status)");
     expect(
       (await request(`/api/projects/${id}/permissions/${row?.id}/approve`, {}))

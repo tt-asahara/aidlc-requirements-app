@@ -11,6 +11,18 @@
       "tool_input": {
         "command": "git status"
       }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "echo *.md"
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "rm -rf ./fixture-trash"
+      }
     }
   ],
   "fixture_kind": "synthetic requirements"

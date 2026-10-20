@@ -14,6 +14,16 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, subscribeEvents } from "../api/client.ts";
 import { ArtifactMarkdown, ArtifactPane } from "./ArtifactPane.tsx";
+import {
+  ApprovedRules,
+  PermissionCard,
+  usePermissions,
+} from "./PermissionPanel.tsx";
+import {
+  type Draft,
+  permissionDraft,
+  revokeDraft,
+} from "./permission-draft.ts";
 import "./connected.css";
 
 const money = (n: number | null) =>
@@ -127,7 +137,7 @@ export function ConnectedApp() {
   const [selected, setSelected] = useState(() =>
     new URLSearchParams(location.search).get("project"),
   );
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const locks = useRef(new Map<string, string>());
   const [pendingTurns, setPendingTurns] = useState<Record<string, string>>({});
   const updatePending = useCallback(
@@ -308,9 +318,26 @@ export function ConnectedApp() {
           health={health.data}
           user={user}
           back={() => select(null)}
-          draft={drafts[draftKey] ?? ""}
+          draft={drafts[draftKey]?.text ?? ""}
           setDraft={(value) =>
-            setDrafts((old) => ({ ...old, [draftKey]: value }))
+            setDrafts((old) => ({
+              ...old,
+              [draftKey]: { text: value, permissionRequestId: null },
+            }))
+          }
+          insertPermissionDraft={(id, replace) =>
+            setDrafts((old) => ({
+              ...old,
+              [draftKey]: permissionDraft(old[draftKey], id, replace),
+            }))
+          }
+          revokePermissionDraft={(id) =>
+            setDrafts((old) => {
+              const previous = old[draftKey];
+              return previous
+                ? { ...old, [draftKey]: revokeDraft(previous, id) }
+                : old;
+            })
           }
           locks={locks.current}
           pending={pendingTurns[draftKey] ?? null}
@@ -345,6 +372,8 @@ function ProjectScreen({
   back,
   draft,
   setDraft,
+  insertPermissionDraft,
+  revokePermissionDraft,
   locks,
   pending,
   updatePending,
@@ -355,6 +384,8 @@ function ProjectScreen({
   back: () => void;
   draft: string;
   setDraft: (value: string) => void;
+  insertPermissionDraft: (id: string, replace?: boolean) => void;
+  revokePermissionDraft: (id: string) => void;
   locks: Map<string, string>;
   pending: string | null;
   updatePending: (key: string, value: string | null) => void;
@@ -417,6 +448,15 @@ function ProjectScreen({
   const compatible =
     project.executionMode === health?.runner &&
     project.fakeScenario === health?.fakeScenario;
+  const permissions = usePermissions({
+    user,
+    projectId: project.id,
+    ready: project.status === "ready",
+    compatible,
+    locks,
+    insertDraft: insertPermissionDraft,
+    revokeDraft: revokePermissionDraft,
+  });
   const canSend =
     project.status === "ready" &&
     compatible &&
@@ -690,6 +730,26 @@ function ProjectScreen({
             <small>送信した内容だけがサーバーへ渡ります</small>
           </div>
           <div className="turn-timeline">
+            <ApprovedRules controller={permissions} />
+            {permissions.error && (
+              <p role="alert" className="connected-error">
+                {permissions.error}
+              </p>
+            )}
+            {permissions.notice && (
+              <p role="status" className="permission-notice">
+                {permissions.notice}
+              </p>
+            )}
+            {permissions.rows
+              .filter((row) => !turns.some((turn) => turn.id === row.turnId))
+              .map((row) => (
+                <PermissionCard
+                  key={row.id}
+                  row={row}
+                  controller={permissions}
+                />
+              ))}
             {history.hasNextPage && (
               <button
                 type="button"
@@ -742,6 +802,15 @@ function ProjectScreen({
                       ` · ${((Date.parse(turn.finishedAt) - Date.parse(turn.startedAt)) / 1000).toFixed(1)} 秒`}
                   </small>
                 </div>
+                {permissions.rows
+                  .filter((row) => row.turnId === turn.id)
+                  .map((row) => (
+                    <PermissionCard
+                      key={row.id}
+                      row={row}
+                      controller={permissions}
+                    />
+                  ))}
               </article>
             ))}
             {busy && (
