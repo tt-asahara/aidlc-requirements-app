@@ -54,7 +54,7 @@ bun scripts/live-smoke.ts --fake --script fixtures/smoke-script.json \
 
 既存ディレクトリを再利用せず、利用者のプロジェクト・業務資料を使わない。サーバー/UIからは呼ばない。
 サンプル台本は合成専用。実モデルの質問は一定でないため、実結果を読んで明示したSendTurn JSON台本を用意する。optionラベルが一致しなければAPIが拒否し、推測・再試行しない。
---executeを明示した場合だけ実モデル用。現在は上流のhash/evidence許可不足をpreflightで検出し、モデル送信前に停止する。
+--executeを明示した場合だけ実モデル用。固定SHAの専用hash許可と出力をpreflightで確認し、不足時はモデル送信前に停止する。
 --preflight-onlyを併用すると導入・許可検査だけを行い、検査に成功してもモデルへ送信しない。
 既存のCLAUDE_CODE_USE_BEDROCK=1、AWS_REGION=ap-northeast-1、CLAUDE_MODEL=jp.anthropic.claude-sonnet-4-6を使う。資格情報は標準環境・既存ファイルへの参照だけで、新規キー・権限を作らない。
 通常real起動前にはbun scripts/fetch-aidlc.tsが必要。上流修正時は公式許可表現とpreflightもレビューし、広いルールで通さない。
@@ -91,12 +91,12 @@ awsBillReconciled=false、priceUsageReconciled=trueを区別する。根拠の�
 | 1 project作成 | 実測済み（合成）、公式導入はM1実測 | 画面→API→外部workspace |
 | 2 質問・返答・stage承認 | 合成で実測、実モデル全stageは未検証 | M1は質問提示まで |
 | 3 許可・続行 | 合成で実測済み | 拒否・許可・取消・手動再送。複雑構文は許可不可 |
-| 4 実1周目refined-mockups | ブロック | 上流hash/evidence修正PR #52が未マージ |
+| 4 実1周目refined-mockups | 実測待ち | PR52マージ済み。固定SHAの無課金preflight成功、実ラウンドは未完了 |
 | 5 実設計書更新・閲覧 | 合成のAPI/閲覧は実測、実doc生成は未検証 | 実生成成功は主張しない |
-| 6 実2周目・統合 | ブロック | 4と同じ上流前提 |
+| 6 実2周目・統合 | 実測待ち | 上流前提は解消。実1周目の完了後に検証する |
 | 7 ZIP | 実測済み（合成workspace） | 設計書/全成果物、除外・パス境界 |
 | 8 費用・project上限 | 合成/結合で実測済み | session差分はM1実測。厳密なAWS遮断ではない |
-| 9 CI・I1〜I9 | M0〜M8成功（main c2bfcc9、CI 39410383278） | 追加検証候補は上流CI解決待ち。モデル未使用 |
+| 9 CI・I1〜I9 | 既存main 9b3cfcaで成功、lock更新後のローカル143 tests / 9 E2Eも成功 | 上流前提解消。lock更新PRのCI結果は別記。モデル未使用 |
 
 初回M8時はdevelopをgit ls-remoteで確認し、lockと同じbb4754a9a9e030c691e0c4b0082eb3914406f535だった。その時点ではlock更新や上流への編集・アプリでの許可回避をしていない。
 初回のコンテナ内Chromium実描画は、標準chromium-sandbox導入後もnamespace作成がOperation not permittedで拒否された。その時点でsandbox無効化・privileged・seccomp変更はしていない。
@@ -133,7 +133,7 @@ native版のBun不要・dispatcher経由実行という契約を満たさない�
 `t-native-install-hooks` / `t-claude-hook-project-root` / `t219-claude-project-dir-quoting` が検出する。
 Dの `poc/d-acceleration/README.md` はcoreをbyte-identicalに保つことも要求するため、
 native配布でのDの実行境界を解決する必要がある。テスト除外・期待値緩和で回避しない。
-上流の全チェック成功・マージまではアプリlock更新、実1/2周・実設計書統合を保留する。
+この時点では、上流の全チェック成功・マージまでアプリlock更新、実1/2周・実設計書統合を保留した。以降の反映は次節に記録する。
 追加モデル費用0 USD。既計上上限1.11 USD、総額承認1000 USDは変更しない。
 
 M8ローカル検証: lint / strict typecheck / 141テスト（509 assertions）/ Web build、開発配信とDocker配信の各9 E2Eを確認する。
@@ -148,3 +148,28 @@ Dockerの公式導入preflightはmodelUsed=false・送信0で上流許可不足�
 - 401/404: 利用者・所有者を確認し、認可を緩めない。
 - 許可不能: wildcardやToolName単独に置き換えず、上流へ正式な表現を確認する。
 - Chromium sandbox失敗: 標準chromium-sandboxを確認する。--no-sandbox、privileged、seccomp無効で迂回しない。
+
+
+### 上流マージ反映の隔離検証（2026-10-20、モデル呼び出し0）
+
+PR52 の merge SHA `61da68f29914d50c0f962853d04b03df9fa3af9c` を lock に固定した。
+既存15176 / 15178 / 5274と専用15180を停止・再起動せず、別チェックアウトと新規の外部データで検証した。
+
+- 公式 `fetch-aidlc.ts`、fresh-install、`live-smoke.ts --execute --preflight-only` が成功。
+  `preflightPassed=true`、`modelUsed=false`、`turns=[]`。アプリ独自の許可追加はない。
+- 導入した専用 `ui-poc-evidence.cjs hash` の出力を独立SHA-256と照合した。
+- 上流の D native 入口を compile し、配布runtimeを隣接配置した隔離バイナリで、
+  PATHを `/usr/bin:/bin:/usr/sbin:/sbin` に限定して `aidlc d generic-auto-cli status`、
+  `aidlc d run --preflight`、`aidlc d design-document doc-manifest --json` が成功。
+  外部Bunは使わない。空のIntent一覧を返すCLI互換性の確認であり、実設計書生成の完了ではない。
+- 導入済み公式captureで合成の日本語メモHTMLを実Chromeで描画し、JSON / PNGを生成した。
+  `SCREEN-NOTES / STATE-LIST / rendered=true`、snapshot SHA-256
+  `a7dd85a420408a894e3ad29525a8e0eaf89207bf2b5c764619617350273ce269`。
+  PNG SHA-256 `e7e387065ee92a7de5142d1ec806ee3526d8b2eeacaafd6acc9780629c6f8b53`。
+- lint / strict typecheck / 143 tests・522 assertions / Web build / 隔離した9 FakeRunner E2Eが成功。
+
+追加モデル費用0 USD。既計上上限1.11 USD、残998.89 USDの外部正本を維持している。
+ホストの既存default AWS認証はGetCallerIdentityで台帳account末尾3462と一致した。
+秘密値の読み出し・新規認証の生成・保存はしていない。
+専用コンテナは引き続きfake設定で、AWS認証のmount・環境変数参照はなく、認証設定を追加していない。
+Docker内の実モデル1/2周・設計書統合は、この無課金検証から成功と推定しない。
