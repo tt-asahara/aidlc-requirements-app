@@ -162,19 +162,25 @@ function Tree({
     retry: false,
   });
   return files.error ? (
-    <p role="alert">{files.error.message}</p>
+    <p>
+      {files.error instanceof ApiError && files.error.status === 404
+        ? "未生成です。必要な工程の後に確認してください。"
+        : files.error.message}
+    </p>
   ) : files.isPending ? (
     <p className="muted">一覧を読み込み中…</p>
   ) : (
     <ul className="connected-file-tree">
-      {files.data.files.map((file) => (
-        <TreeEntry
-          key={file.path}
-          file={file}
-          context={context}
-          selected={selected}
-        />
-      ))}
+      {files.data.files
+        .filter((file) => file.kind === "directory" || /\.md$/i.test(file.name))
+        .map((file) => (
+          <TreeEntry
+            key={file.path}
+            file={file}
+            context={context}
+            selected={selected}
+          />
+        ))}
     </ul>
   );
 }
@@ -279,7 +285,13 @@ function HtmlPreview({
     </div>
   );
 }
-function FileView({ path, context }: { path: string; context: Context }) {
+export function FileView({
+  path,
+  context,
+}: {
+  path: string;
+  context: Context;
+}) {
   const data = useQuery({
     queryKey: [
       "project",
@@ -453,5 +465,104 @@ export function ArtifactPane({
         <p>プロジェクトの準備後に成果物を表示します。</p>
       )}
     </aside>
+  );
+}
+
+export function LogicalDocuments({
+  user,
+  projectId,
+  space,
+  selected,
+  open,
+}: {
+  user: string;
+  projectId: string;
+  space: string;
+  selected: string;
+  open: (path: string) => void;
+}) {
+  const context = { user, projectId, space, open };
+  return (
+    <aside className="document-nav" aria-label="設計書ナビゲーション">
+      <p className="eyebrow">DESIGN DOCUMENTS</p>
+      <h2>設計書</h2>
+      <button type="button" onClick={() => open("design-document/README.md")}>
+        設計書の概要
+      </button>
+      <ArtifactDownloads user={user} projectId={projectId} />
+      <p className="muted">
+        全ラウンドの統合文書 · 原本との対応は関連資料／不明
+      </p>
+      {[
+        ["00_設計管理", "設計管理"],
+        ["01_システム化構想", "システム化構想"],
+        ["02_基本設計", "基本設計"],
+        ["03_詳細設計", "詳細設計"],
+        ["90_QA", "QA（引用元がある場合）"],
+      ].map(([dir, label]) => (
+        <details key={dir}>
+          <summary>{label}</summary>
+          <Tree
+            path={`design-document/${dir}`}
+            context={context}
+            selected={selected}
+          />
+        </details>
+      ))}
+      <p className="muted">
+        未検討は章ごとの状態です。後工程の保留を含みます。
+      </p>
+    </aside>
+  );
+}
+
+function ArtifactDownloads({
+  user,
+  projectId,
+}: {
+  user: string;
+  projectId: string;
+}) {
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const download = async (target: string) => {
+    if (pending) return;
+    setPending(true);
+    setError("");
+    try {
+      const response = await artifactResponse(
+        user,
+        `/api/projects/${projectId}/download?target=${target}`,
+      );
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `aidlc-${projectId}-${target}.zip`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "ZIP を取得できません");
+    } finally {
+      setPending(false);
+    }
+  };
+  return (
+    <div className="zip-actions">
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => void download("design-document")}
+      >
+        設計書 ZIP
+      </button>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => void download("all")}
+      >
+        全成果物 ZIP
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </div>
   );
 }

@@ -789,3 +789,84 @@ test("V2 context: same option labels from stale questions are rejected after the
     ).status,
   ).toBe(400);
 });
+
+test("V2 mock revision requires exact reference bytes and keeps the visible body unchanged", async () => {
+  let calls = 0;
+  const f = await setup({ run: async () => success(++calls) });
+  const id = await f.create();
+  const project = f.store.getProject(id);
+  if (!project) throw new Error("project missing");
+  const { hashBytes } = await import("../src/reader/mockups.ts");
+  const dir = join(
+    project.workspaceDir,
+    "aidlc/spaces/default/intents/round-1/ideation/rough-mockups",
+  );
+  await mkdir(dir, { recursive: true });
+  const html = "<h1>合成予約画面</h1>";
+  const sha256 = hashBytes(new TextEncoder().encode(html));
+  const mapping = {
+    screen: "SCREEN-1",
+    state: "STATE-1",
+    ac: "AC-001",
+    asset: "index.html",
+    check: "確認",
+  };
+  await writeFile(join(dir, "index.html"), html);
+  await writeFile(
+    join(dir, "ui-poc-rough-contract.md"),
+    `\`\`\`ui-poc-contract\n${JSON.stringify({ schema: 2, stage: "rough-mockups", assets: [{ path: "index.html", sha256 }], mappings: [mapping] })}\n\`\`\``,
+  );
+  const url = `/api/projects/${id}`;
+  const execution = await (await f.request(`${url}/context`)).json();
+  const snapshot = await (
+    await f.request(`${url}/mockups?intent=round-1`)
+  ).json();
+  const reference = {
+    intent: "round-1",
+    stage: "rough-mockups",
+    contractSha256: snapshot.contracts[0].sha256,
+    assets: [{ path: "index.html", sha256 }],
+    mapping,
+  };
+  const invalid = await f.request(`${url}/turns`, {
+    json: {
+      origin: "typed",
+      text: "変更",
+      purpose: "mockup_revision",
+      expectedContext: execution,
+    },
+  });
+  expect(invalid.status).toBe(400);
+  const visible = "  この画面について相談\n変更したい点: 日本語  ";
+  const accepted = await f.request(`${url}/turns`, {
+    json: {
+      origin: "typed",
+      text: visible,
+      purpose: "mockup_revision",
+      expectedContext: { ...execution, reference },
+    },
+  });
+  expect(accepted.status).toBe(202);
+  const turn = (await accepted.json()).turn;
+  await f.turns.wait(turn.id);
+  expect(f.store.getTurn(turn.id)?.promptText).toBe(visible);
+  const current = await (await f.request(`${url}/context`)).json();
+  await writeFile(join(dir, "index.html"), `${html}changed`);
+  const stale = await f.request(`${url}/turns`, {
+    json: {
+      origin: "typed",
+      text: visible,
+      purpose: "mockup_revision",
+      expectedContext: { ...current, reference },
+    },
+  });
+  expect(stale.status).toBe(409);
+  expect(calls).toBe(1);
+  expect(
+    (
+      await f.request(`${url}/mockups?intent=round-1`, {
+        headers: { Origin: "https://example.invalid" },
+      })
+    ).status,
+  ).toBe(403);
+});

@@ -37,6 +37,24 @@ export class FixtureWorkspaceStorage implements WorkspaceStorage {
         workspaceDir,
         { recursive: true, force: false, errorOnExist: true },
       );
+      // Two immutable synthetic rounds support historical browsing; playback never rewrites them.
+      const intents = join(workspaceDir, "aidlc/spaces/default/intents");
+      await cp(
+        join(intents, "fixture-round-1"),
+        join(intents, "fixture-round-2"),
+        { recursive: true, errorOnExist: true, force: false },
+      );
+      await writeFile(
+        join(intents, "intents.json"),
+        JSON.stringify(
+          [1, 2].map((n) => ({
+            dirName: `fixture-round-${n}`,
+            slug: "synthetic-requirements",
+            scope: "ui-poc-requirements",
+            status: "synthetic",
+          })),
+        ),
+      );
       return {
         status: "ready" as const,
         workspaceDir,

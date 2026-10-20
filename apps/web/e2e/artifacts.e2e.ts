@@ -19,16 +19,17 @@ test("server artifacts: design/coverage → relative HTML/CSS → sandbox isolat
     if (request.url().startsWith("https://example.invalid")) externalRequests++;
   });
   await create(page, "M6 成果物");
+  await page.getByRole("button", { name: "設計書の概要", exact: true }).click();
   await expect(
-    page.locator(".artifact-content").getByRole("heading", {
+    page.locator(".mockup-main").getByRole("heading", {
       name: "メモ一覧の設計書（合成 fixture）",
       exact: true,
     }),
   ).toBeVisible();
   await expect(page.locator(".coverage-row")).toContainText("記載済み 3");
-  await expect(
-    page.locator('.artifact-content [href^="javascript:"]'),
-  ).toHaveCount(0);
+  await expect(page.locator('.mockup-main [href^="javascript:"]')).toHaveCount(
+    0,
+  );
   expect(await page.evaluate(() => Object.hasOwn(window, "PREVIEW_XSS"))).toBe(
     false,
   );
@@ -81,12 +82,11 @@ test("server artifacts: design/coverage → relative HTML/CSS → sandbox isolat
   });
   await frame.getByRole("button", { name: "メモを追加", exact: true }).click();
   await expect(frame.locator("#notes li")).toHaveCount(2);
-  await expect(page.locator(".connected-file-tree").first()).not.toContainText(
+  await page.getByText("設計管理", { exact: true }).click();
+  await expect(page.locator(".document-nav")).not.toContainText(
     ".aidlc-engine",
   );
-  await expect(page.locator(".connected-file-tree").first()).not.toContainText(
-    "audit",
-  );
+  await expect(page.locator(".document-nav")).not.toContainText("audit");
   const event = page.waitForEvent("download");
   await page.getByRole("button", { name: "全成果物 ZIP", exact: true }).click();
   const download = await event;
@@ -108,8 +108,8 @@ test("server artifacts: design/coverage → relative HTML/CSS → sandbox isolat
     .getByRole("button", { name: "design-document/README.md", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "設計書", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByRole("heading", { name: "文書を読む", exact: true }),
+  ).toBeVisible();
   await page.screenshot({
     path: test.info().outputPath("connected-m6.png"),
     fullPage: true,
@@ -119,6 +119,7 @@ test("project switch scopes previews, and a lost API identity hides cached artif
   page,
 }) => {
   await create(page, "M6 所有者 A");
+  await page.getByRole("button", { name: "設計書の概要", exact: true }).click();
   await page.getByRole("button", { name: "モックアップ", exact: true }).click();
   await expect(page.locator('iframe[title="HTML モックアップ"]')).toBeVisible();
   await page
@@ -132,6 +133,7 @@ test("project switch scopes previews, and a lost API identity hides cached artif
   await expect(
     page.getByRole("heading", { name: "M6 所有者 B", level: 1, exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "設計書の概要", exact: true }).click();
   await page.getByRole("button", { name: "モックアップ", exact: true }).click();
   const iframe = page.locator('iframe[title="HTML モックアップ"]');
   await expect(iframe).toBeVisible();

@@ -1,4 +1,5 @@
 import type {
+  ExpectedContext,
   HealthResponse,
   Progress,
   ProjectSummary,
@@ -13,7 +14,8 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, subscribeEvents } from "../api/client.ts";
-import { ArtifactMarkdown, ArtifactPane } from "./ArtifactPane.tsx";
+import { ArtifactMarkdown } from "./ArtifactPane.tsx";
+import { MockupWorkspace } from "./MockupWorkspace.tsx";
 import {
   ApprovedRules,
   PermissionCard,
@@ -139,6 +141,7 @@ export function ConnectedApp() {
   );
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const locks = useRef(new Map<string, string>());
+  const draftContexts = useRef(new Map<string, ExpectedContext>());
   const [pendingTurns, setPendingTurns] = useState<Record<string, string>>({});
   const updatePending = useCallback(
     (key: string, value: string | null) =>
@@ -340,6 +343,7 @@ export function ConnectedApp() {
                 : old;
             })
           }
+          draftContexts={draftContexts.current}
           locks={locks.current}
           pending={pendingTurns[draftKey] ?? null}
           updatePending={updatePending}
@@ -376,6 +380,7 @@ function ProjectScreen({
   insertPermissionDraft,
   revokePermissionDraft,
   locks,
+  draftContexts,
   pending,
   updatePending,
 }: {
@@ -388,11 +393,12 @@ function ProjectScreen({
   insertPermissionDraft: (id: string, replace?: boolean) => void;
   revokePermissionDraft: (id: string) => void;
   locks: Map<string, string>;
+  draftContexts: Map<string, ExpectedContext>;
   pending: string | null;
   updatePending: (key: string, value: string | null) => void;
 }) {
   const timelineEnd = useRef<HTMLDivElement>(null);
-  const [selectedFile, setSelectedFile] = useState("design-document/README.md");
+  const [selectedFile, setSelectedFile] = useState("");
   const client = useQueryClient();
   const prefix = useMemo(
     () => ["project", user, project.id],
@@ -404,6 +410,9 @@ function ProjectScreen({
     (value: string | null) => updatePending(lockKey, value),
     [lockKey, updatePending],
   );
+  const [region, setRegion] = useState("mockup");
+  const [cancelling, setCancelling] = useState(false);
+  const roundContext = useRef<ExpectedContext | undefined>(undefined);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [roundDialog, setRoundDialog] = useState(false);
@@ -426,6 +435,14 @@ function ProjectScreen({
   const progress = useQuery({
     queryKey: [...prefix, "progress"],
     queryFn: () => api<Progress>(user, `/api/projects/${project.id}/progress`),
+    refetchInterval: 1000,
+    retry: false,
+    enabled: project.status === "ready",
+  });
+  const execution = useQuery({
+    queryKey: [...prefix, "context"],
+    queryFn: () =>
+      api<ExpectedContext>(user, `/api/projects/${project.id}/context`),
     refetchInterval: 1000,
     retry: false,
     enabled: project.status === "ready",
@@ -465,7 +482,9 @@ function ProjectScreen({
     !history.isPending &&
     !progress.isPending &&
     !history.error &&
-    !progress.error;
+    !progress.error &&
+    !!execution.data &&
+    (execution.data.latestTurn?.id ?? null) === (turns.at(-1)?.id ?? null);
   const refresh = useCallback(() => {
     void client.invalidateQueries({ queryKey: prefix });
     void client.invalidateQueries({ queryKey: ["projects", user] });
@@ -474,6 +493,7 @@ function ProjectScreen({
     const targetId = submitted ?? locks.get(lockKey);
     const recorded = turns.find((turn) => turn.id === targetId);
     if (recorded && !["queued", "running"].includes(recorded.status)) {
+      setCancelling(false);
       locks.delete(lockKey);
       setSubmitted(null);
     }
@@ -517,6 +537,15 @@ function ProjectScreen({
     );
     return () => controller.abort();
   }, [project.id, target, user, refresh]);
+  useEffect(() => {
+    if (!draft) draftContexts.delete(lockKey);
+    else if (!draftContexts.has(lockKey) && execution.data)
+      draftContexts.set(lockKey, structuredClone(execution.data));
+  }, [draft, draftContexts, lockKey, execution.data]);
+  const openFile = (path: string) => {
+    setSelectedFile(path);
+    setRegion("mockup");
+  };
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
   const send = async (input: SendTurn, clearDraft = false) => {
@@ -530,7 +559,21 @@ function ProjectScreen({
       const result = await api<{ turn: PublicTurn }>(
         user,
         `/api/projects/${project.id}/turns`,
-        { body: input },
+        {
+          body: {
+            ...input,
+            ...(input.origin === "typed" &&
+            draftContexts.get(lockKey)?.reference
+              ? { purpose: "mockup_revision" }
+              : {}),
+            expectedContext:
+              input.origin === "typed"
+                ? (draftContexts.get(lockKey) ?? execution.data)
+                : input.origin === "action" && input.action === "start_round"
+                  ? roundContext.current
+                  : execution.data,
+          },
+        },
       );
       locks.set(lockKey, result.turn.id);
       setSubmitted(result.turn.id);
@@ -549,11 +592,13 @@ function ProjectScreen({
   const cancel = async () => {
     if (!target || target === "sending") return;
     try {
+      setCancelling(true);
       await api(user, `/api/projects/${project.id}/turns/${target}/cancel`, {
         method: "POST",
       });
       refresh();
     } catch (err) {
+      setCancelling(false);
       setError(err instanceof Error ? err.message : "中止できませんでした");
     }
   };
@@ -596,6 +641,14 @@ function ProjectScreen({
         </button>
         <h1>{project.name}</h1>
         <span className="mode-tag">{modeLabel(project)}</span>
+        <small>
+          実行対象: {progress.data?.active?.dirName ?? "未開始"} /{" "}
+          {progress.data?.active?.currentStage ?? "工程なし"}
+        </small>
+        <small>
+          接続準備:{" "}
+          {compatible && health?.aidlc.ready ? "準備完了" : "確認が必要"}
+        </small>
         <span
           role="status"
           data-testid="waiting-badge"
@@ -633,99 +686,121 @@ function ProjectScreen({
           {error || history.error?.message || progress.error?.message}
         </p>
       )}
-      <main className="connected-workspace">
-        <aside className="progress-pane">
-          <p className="eyebrow">PROGRESS</p>
-          <h2>要件の進捗</h2>
-          <ol className="round-list">
-            {progress.data?.intents.map((intent, i) => (
-              <li
-                key={intent.dirName}
-                className={intent.isActive ? "active" : ""}
-              >
-                {i + 1} 周目 · {intent.status}
-              </li>
-            ))}
-          </ol>
-          {progress.data?.active && (
-            <ul className="stage-list">
-              {progress.data.active.stages
-                .filter((stage) => showSkip || stage.disposition !== "SKIP")
-                .map((stage) => (
-                  <li key={stage.slug} data-mark={stage.mark}>
-                    <span
-                      role="img"
-                      aria-label={
-                        stage.mark === "x"
-                          ? "承認済み"
-                          : stage.mark === "?"
-                            ? "承認待ち"
-                            : "ステージ状態"
-                      }
-                    >
-                      {
-                        {
-                          x: "✓",
-                          "?": "?",
-                          "-": "◐",
-                          R: "↺",
-                          S: "–",
-                          " ": "○",
-                        }[stage.mark]
-                      }
-                    </span>
-                    {stage.slug}
-                  </li>
-                ))}
-            </ul>
-          )}
-          <label className="skip-toggle">
-            <input
-              type="checkbox"
-              checked={showSkip}
-              onChange={(event) => setShowSkip(event.target.checked)}
-            />
-            スキップを表示
-          </label>
-          <div className="progress-actions">
-            <button
-              type="button"
-              disabled={!canSend}
-              className="primary"
-              onClick={() => setRoundDialog(true)}
-            >
-              新しい要件ラウンド
-            </button>
-            <button
-              type="button"
-              disabled={!canSend}
-              onClick={() =>
-                void send({ origin: "action", action: "update_doc" })
-              }
-            >
-              設計書を更新
-            </button>
-            <button
-              type="button"
-              disabled={!canSend}
-              onClick={() =>
-                void send({ origin: "action", action: "rebuild_doc" })
-              }
-            >
-              設計書を全再生成
-            </button>
-            <button
-              type="button"
-              disabled={!canSend}
-              onClick={() =>
-                void send({ origin: "action", action: "reopen_requirements" })
-              }
-            >
-              要件を開き直す
-            </button>
-          </div>
-        </aside>
+      <nav className="region-tabs" aria-label="作業領域">
+        {[
+          ["conversation", "会話・下書き"],
+          ["mockup", "モック・文書"],
+          ["documents", "設計書ナビ"],
+        ].map(([value, label]) => (
+          <button
+            type="button"
+            key={value}
+            aria-pressed={region === value}
+            onClick={() => setRegion(value ?? "mockup")}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <main className="connected-workspace v2-workspace" data-region={region}>
         <section className="conversation-pane" aria-label="会話">
+          <details className="progress-pane">
+            <summary>工程・ラウンドの判断と操作</summary>
+            <p className="eyebrow">PROGRESS</p>
+            <h2>要件の進捗</h2>
+            <ol className="round-list">
+              {progress.data?.intents.map((intent, i) => (
+                <li
+                  key={intent.dirName}
+                  className={intent.isActive ? "active" : ""}
+                >
+                  {i + 1} 周目 · {intent.status}
+                </li>
+              ))}
+            </ol>
+            {progress.data?.active && (
+              <ul className="stage-list">
+                {progress.data.active.stages
+                  .filter((stage) => showSkip || stage.disposition !== "SKIP")
+                  .map((stage) => (
+                    <li key={stage.slug} data-mark={stage.mark}>
+                      <span
+                        role="img"
+                        aria-label={
+                          stage.mark === "x"
+                            ? "承認済み"
+                            : stage.mark === "?"
+                              ? "承認待ち"
+                              : "ステージ状態"
+                        }
+                      >
+                        {
+                          {
+                            x: "✓",
+                            "?": "?",
+                            "-": "◐",
+                            R: "↺",
+                            S: "–",
+                            " ": "○",
+                          }[stage.mark]
+                        }
+                      </span>
+                      {stage.slug}
+                    </li>
+                  ))}
+              </ul>
+            )}
+            <label className="skip-toggle">
+              <input
+                type="checkbox"
+                checked={showSkip}
+                onChange={(event) => setShowSkip(event.target.checked)}
+              />
+              スキップを表示
+            </label>
+            <div className="progress-actions">
+              <button
+                type="button"
+                disabled={!canSend}
+                className="primary"
+                onClick={() => {
+                  roundContext.current = execution.data
+                    ? structuredClone(execution.data)
+                    : undefined;
+                  setRoundDialog(true);
+                }}
+              >
+                新しい要件ラウンド
+              </button>
+              <button
+                type="button"
+                disabled={!canSend}
+                onClick={() =>
+                  void send({ origin: "action", action: "update_doc" })
+                }
+              >
+                設計書を更新
+              </button>
+              <button
+                type="button"
+                disabled={!canSend}
+                onClick={() =>
+                  void send({ origin: "action", action: "rebuild_doc" })
+                }
+              >
+                設計書を全再生成
+              </button>
+              <button
+                type="button"
+                disabled={!canSend}
+                onClick={() =>
+                  void send({ origin: "action", action: "reopen_requirements" })
+                }
+              >
+                要件を開き直す
+              </button>
+            </div>
+          </details>
           <div className="conversation-heading">
             <h2>会話</h2>
             <small>送信した内容だけがサーバーへ渡ります</small>
@@ -789,7 +864,7 @@ function ProjectScreen({
                         user,
                         projectId: project.id,
                         space: progress.data?.space ?? "default",
-                        open: setSelectedFile,
+                        open: openFile,
                       }}
                     />
                   )}
@@ -823,9 +898,9 @@ function ProjectScreen({
                 <button
                   type="button"
                   onClick={() => void cancel()}
-                  disabled={!target || target === "sending"}
+                  disabled={cancelling || !target || target === "sending"}
                 >
-                  中止
+                  {cancelling ? "中止要求中…" : "中止"}
                 </button>
               </div>
             )}
@@ -865,12 +940,26 @@ function ProjectScreen({
             }}
           >
             <label htmlFor="reply-input">返答</label>
+            {draft && (
+              <small>
+                下書きの送信対象:{" "}
+                {draftContexts.get(lockKey)?.activeIntent ?? "未開始"} /{" "}
+                {draftContexts.get(lockKey)?.currentStage ?? "工程なし"} · 質問
+                #{draftContexts.get(lockKey)?.latestTurn?.seq ?? 0}
+              </small>
+            )}
             <textarea
               id="reply-input"
               value={draft}
               maxLength={20_000}
-              disabled={project.status !== "ready" || !compatible}
-              onChange={(event) => setDraft(event.target.value)}
+              disabled={
+                project.status !== "ready" || !compatible || !execution.data
+              }
+              onChange={(event) => {
+                if (!draftContexts.has(lockKey) && execution.data)
+                  draftContexts.set(lockKey, structuredClone(execution.data));
+                setDraft(event.target.value);
+              }}
               placeholder="番号または返答を入力…"
             />
             <div>
@@ -885,13 +974,19 @@ function ProjectScreen({
             </div>
           </form>
         </section>
-        <ArtifactPane
+        <MockupWorkspace
           user={user}
           projectId={project.id}
-          space={progress.data?.space ?? "default"}
-          selected={selectedFile}
-          open={setSelectedFile}
-          ready={project.status === "ready"}
+          progress={progress.data}
+          execution={execution.data}
+          selectedFile={selectedFile}
+          open={openFile}
+          canDraft={canSend && !draft.trim()}
+          makeDraft={(text, context) => {
+            draftContexts.set(lockKey, structuredClone(context));
+            setDraft(text);
+            setRegion("conversation");
+          }}
         />
       </main>
       {roundDialog && (
