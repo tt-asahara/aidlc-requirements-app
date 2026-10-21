@@ -239,3 +239,41 @@ test("V2 historical mockups are read only while reopen targets the current execu
     "fixture-round-2 / requirements-analysis",
   );
 });
+
+test("V2 ambiguous Markdown choices preserve the original question and an unsent free-text answer", async ({
+  page,
+}) => {
+  const id = await create(page, "V2 曖昧な選択肢");
+  await start(page);
+  await expect(
+    page.getByRole("button", { name: "1. 個人用で進める", exact: true }),
+  ).toBeEnabled();
+  const response =
+    "## 引き継ぐ項目\n1. 入力を保持する\n2. 予約を変更しない\n\n```markdown\n1. コード内の例\n2. コード内の例\n```\n\n> 1. 引用内の例\n> 2. 引用内の例\n\n番号 | 内容\n--- | ---\n1. 表内の例 | A\n2. 表内の例 | B\n\n## 現在のゲート\n**A. 承認する（Approve）**\n\n**B. 変更を要求する（Request Changes）**";
+  await page.route(`**/api/projects/${id}/turns?*`, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const upstream = await route.fetch();
+    const body = await upstream.json();
+    body.turns = body.turns.map((turn: { seq: number }) =>
+      turn.seq === 1 ? { ...turn, resultText: response } : turn,
+    );
+    await route.fulfill({ response: upstream, json: body });
+  });
+  let sends = 0;
+  page.on("request", (r) => {
+    if (r.method() === "POST" && /\/turns$/.test(new URL(r.url()).pathname))
+      sends++;
+  });
+  await page.reload();
+  await expect(page.getByTestId("turn-1")).toContainText(
+    "A. 承認する（Approve）",
+  );
+  await expect(page.locator(".option-buttons button")).toHaveCount(0);
+  const draft = page.getByLabel("返答", { exact: true });
+  await draft.fill("A. 承認する（Approve）");
+  await expect(draft).toHaveValue("A. 承認する（Approve）");
+  await expect(
+    page.getByRole("button", { name: "送信", exact: true }),
+  ).toBeEnabled();
+  expect(sends).toBe(0);
+});

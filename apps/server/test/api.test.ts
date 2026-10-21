@@ -198,7 +198,7 @@ test("FakeRunner API: create → typed send → persisted result; private paths 
       .projects,
   ).toHaveLength(0);
 });
-test("I1: typed text is only trimmed; actions are exactly the fixed strings and options use last contiguous block", () => {
+test("I1: typed text is only trimmed; actions are exactly the fixed strings and options use the terminal explicit question", () => {
   expect(
     toPrompt({ origin: "typed", text: "  -flag\n漢字  " }).promptText,
   ).toBe("-flag\n漢字");
@@ -217,7 +217,7 @@ test("I1: typed text is only trimmed; actions are exactly the fixed strings and 
     expect(toPrompt({ origin: "action", action }).promptText).toBe(
       prompt ?? "",
     );
-  const options = "1. 古い\n2. 質問\n\n文章\n1. 最後\n2. 戻る";
+  const options = "1. 古い\n2. 質問\n\n次の質問？\n1. 最後\n2. 戻る";
   expect(extractOptions(options).map((option) => option.label)).toEqual([
     "1. 最後",
     "2. 戻る",
@@ -250,10 +250,59 @@ test("a lettered gate supersedes an earlier numbered summary", () => {
       toPrompt({ origin: "typed", text: "A. Approve" }, response).promptText,
     ).toBe("A. Approve");
     expect(
-      extractOptions(`${response}\n\n1. Current answer\n2. Other answer`).map(
-        (option) => option.label,
-      ),
+      extractOptions(
+        `${response}\n\nChoose an option:\n1. Current answer\n2. Other answer`,
+      ).map((option) => option.label),
     ).toEqual(["1. Current answer", "2. Other answer"]);
+  }
+});
+
+test("options require a terminal question and exclude Markdown examples and ambiguous blocks", () => {
+  const numbered = "1. 承認する\n2. 変更する";
+  const question = `現在の内容を承認しますか？\n${numbered}`;
+  for (const response of [
+    `## 引き継ぐ項目\n${numbered}`,
+    `Summary:\n${numbered}`,
+    `${question}\n\n補足の要約です。`,
+    `${question}\n\n1. 別の要約\n2. 次の要約`,
+    `${question}\n\n3. 孤立した項目`,
+    `選択肢:\n3. 承認する\n4. 変更する`,
+    `選択肢:\n1. 承認する\n3. 変更する`,
+    `選択肢:\n\n\`\`\`markdown\n${numbered}\n\`\`\``,
+    `選択肢:\n\n~~~\n${numbered}\n~~~`,
+    `選択肢:\n\n\`\`\`\`\n\`\`\`\n${numbered}\n\`\`\`\``,
+    `選択肢:\n\n    1. 承認する\n    2. 変更する`,
+    `選択肢:\n\n> 1. 承認する\n> 2. 変更する`,
+    `> 引用した質問？\n${numbered}`,
+    `    コード内の質問？\n${numbered}`,
+    `選択肢:\n\n| 番号 | 内容 |\n| --- | --- |\n| 1. | 承認する |\n| 2. | 変更する |`,
+    `選択肢:\n\n番号 | 内容\n--- | ---\n1. 承認する | A\n2. 変更する | B`,
+    `${question}\n\n> 1. 引用\n> 2. 引用`,
+    `${question}\n\n\`\`\`\n1. 例\n2. 例\n\`\`\``,
+    `${question}\n\nA. Approve\nB. Request Changes`,
+  ]) {
+    expect(extractOptions(response)).toEqual([]);
+    expect(() =>
+      toPrompt({ origin: "option", optionLabel: "1. 承認する" }, response),
+    ).toThrow();
+    expect(
+      toPrompt({ origin: "typed", text: "A. Approve" }, response).promptText,
+    ).toBe("A. Approve");
+  }
+  for (const response of [
+    numbered,
+    question,
+    `${question}\n\n<!-- hidden fixture marker -->`,
+    `1. 旧回答\n2. 旧回答\n\n## 選択肢\n${numbered}`,
+    `~~~\n1. 例\n2. 例\n~~~\n\n**現在の質問？**\n${numbered}`,
+  ]) {
+    expect(extractOptions(response).map((option) => option.label)).toEqual(
+      numbered.split("\n"),
+    );
+    expect(
+      toPrompt({ origin: "option", optionLabel: "1. 承認する" }, response)
+        .promptText,
+    ).toBe("1");
   }
 });
 
