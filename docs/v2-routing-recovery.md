@@ -4,6 +4,15 @@ Keep the installed upstream pin, rules, credentials and ordinary gates unchanged
 This procedure prepares routing metadata through D's existing exports; it does not
 add a runner, create a turn, approve a stage, or claim that a skill was applied.
 
+The same helper accepts the actual `requirements-analysis/requirements.md` or
+`refined-mockups/ui-poc-refined-contract.md` entry point once the stage produces
+and questions file exist. It gets the complete produces list from the installed
+core stage definition (rough: four, requirements: two, refined: six), and resolves
+the configured refined design skill through the installed router. It never
+substitutes a default skill for the selected one. Supply the explicit facts for
+that stage, such as `unresolved_requirement_decisions` / `domain_language_conflict`
+or `unresolved_visual_alternatives`; determine their values from observed context.
+
 From the trusted installed synthetic workspace, run the application helper:
 
 ```sh

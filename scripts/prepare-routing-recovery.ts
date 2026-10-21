@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, relative, resolve, sep } from "node:path";
+import { basename, dirname, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 // Operator-only preparation in a trusted, installed synthetic workspace. This
@@ -14,7 +14,7 @@ if (
   args[4] !== "--attempt"
 )
   throw new Error(
-    "Use --output-path <rough contract> --facts <flat JSON> --attempt <positive integer> from the installed workspace",
+    "Use --output-path <rough/refined contract or requirements.md> --facts <flat JSON> --attempt <positive integer> from the installed workspace",
   );
 const attempt = Number(args[5]);
 if (!Number.isSafeInteger(attempt) || attempt < 1)
@@ -49,8 +49,14 @@ for (const [path, hash] of Object.entries(receipt.composeOwned)) {
   }
 }
 const outputPath = await confined(args[1] as string);
-if (!outputPath.endsWith(`${sep}rough-mockups${sep}ui-poc-rough-contract.md`))
-  throw new Error("Expected the rough contract entry point");
+const stage = basename(dirname(outputPath));
+const entrypoints: Record<string, string> = {
+  "rough-mockups": "ui-poc-rough-contract.md",
+  "requirements-analysis": "requirements.md",
+  "refined-mockups": "ui-poc-refined-contract.md",
+};
+if (entrypoints[stage] !== basename(outputPath))
+  throw new Error("Expected a supported stage entry point");
 const facts: unknown = JSON.parse(await readFile(args[3] as string, "utf8"));
 if (
   !facts ||
@@ -75,6 +81,7 @@ interface Plan {
   runtimeProfile: string;
   comparisonTreatment: string | null;
   configSha256: string;
+  designSkill?: string;
   invocations: Invocation[];
 }
 const router = createRequire(import.meta.url)(await confined(routerPath)) as {
@@ -88,16 +95,26 @@ const router = createRequire(import.meta.url)(await confined(routerPath)) as {
     unit: string | null;
     engineStateSha256: string;
   };
-  plan: (stage: string, facts: object, scope: string) => Plan;
+  plan: (
+    stage: string,
+    facts: object,
+    scope: string,
+    designSkill?: string,
+  ) => Plan;
+  resolveDesignSkill: () => string;
   lockedEntrypoint: (
     skill: string,
     entrypoint: string,
   ) => { git_blob_sha: string; bytes: number };
   gitBlobHash: (bytes: Buffer) => string;
 };
-const stage = "rough-mockups";
 const context = { ...router.deriveEngineContext(outputPath, stage), attempt };
-const plan = router.plan(stage, facts, context.scope);
+const plan = router.plan(
+  stage,
+  facts,
+  context.scope,
+  stage === "refined-mockups" ? router.resolveDesignSkill() : undefined,
+);
 if (!plan.pass)
   throw new Error(plan.findings?.join("; ") ?? "Routing plan failed");
 for (const invocation of plan.invocations.filter(
@@ -119,18 +136,23 @@ const identity = {
   runtimeProfile: plan.runtimeProfile,
   comparisonTreatment: plan.comparisonTreatment,
   configSha256: plan.configSha256,
+  ...(plan.designSkill ? { designSkill: plan.designSkill } : {}),
 };
 // D's sensors do not replace the core question-file grammar. Use the installed
 // validator rather than maintaining a second, potentially permissive parser.
 const questionsPath = await confined(
-  resolve(dirname(outputPath), "rough-mockups-questions.md"),
+  resolve(dirname(outputPath), `${stage}-questions.md`),
 );
 const core = (await import(
   pathToFileURL(await confined(".claude/tools/aidlc-lib.ts")).href
 )) as {
   summaryConfirmationContentHash: (content: string) => string;
   summaryConfirmationAnswer: (content: string) => string | null;
+  findStageBySlug: (slug: string) => { produces: string[] } | undefined;
 };
+const stageDefinition = core.findStageBySlug(stage);
+if (!stageDefinition?.produces.length)
+  throw new Error("Installed core stage has no declared produces");
 const questions = await readFile(questionsPath, "utf8");
 const questionPreflight = {
   path: relative(workspace, questionsPath),
@@ -139,13 +161,10 @@ const questionPreflight = {
   confirmationReceiptVerified: false,
 };
 const sensorChecks = [];
-for (const name of [
-  "wireframes.md",
-  "user-flow.md",
-  "rough-mockups-questions.md",
-  "ui-poc-rough-contract.md",
-]) {
-  const path = await confined(resolve(dirname(outputPath), name));
+for (const name of stageDefinition.produces) {
+  if (!/^[a-z][a-z0-9-]*$/.test(name))
+    throw new Error("Unsupported installed produce name");
+  const path = await confined(resolve(dirname(outputPath), `${name}.md`));
   sensorChecks.push([
     "bun",
     sensorPath,
@@ -189,27 +208,41 @@ const prepared = {
       "outputs: named actual file/hash",
     ],
     skipped: ["type=skill-skipped", "skill", "condition", "observed reason"],
-    designContext: [
-      "schema=1",
-      "creatorConfirmed from observed answer",
-      "source.kind/path/sha256",
-      "commonBrief.path/sha256",
-      "audience",
-      "useCases",
-      "brandTone",
-    ],
-    wcagReport: {
-      schema: 1,
-      pinnedSourcePreserved: true,
-      sourceStatement: "18px+ or 14px bold",
-      normalCssPx: 24,
-      boldCssPx: 18.6667,
-      normativeBasis: "WCAG 18pt or 14pt bold",
-    },
+    ...(plan.invocations.some((item) =>
+      [...item.inputs, ...item.outputs].includes(
+        "creator-confirmed-design-context-snapshot",
+      ),
+    )
+      ? {
+          designContext: [
+            "schema=1",
+            "creatorConfirmed from observed answer",
+            "source.kind/path/sha256",
+            "commonBrief.path/sha256",
+            "audience",
+            "useCases",
+            "brandTone",
+          ],
+        }
+      : {}),
+    ...(plan.invocations.some((item) =>
+      item.outputs.includes("accessibility-correction-report"),
+    )
+      ? {
+          wcagReport: {
+            schema: 1,
+            pinnedSourcePreserved: true,
+            sourceStatement: "18px+ or 14px bold",
+            normalCssPx: 24,
+            boldCssPx: 18.6667,
+            normativeBasis: "WCAG 18pt or 14pt bold",
+          },
+        }
+      : {}),
   },
   sensorChecks,
   completion:
-    "Not completion evidence. Record only actual reads/application, bind exact written bytes using the installed dedicated hash command, and require all four full sensors to pass. Re-derive context if engine state changes. No approval or override is granted.",
+    "Not completion evidence. Record only actual reads/application required by the selected invocations, bind exact written bytes using the installed dedicated hash command, and require every declared full sensor to pass. Re-derive context if engine state changes. No approval or override is granted.",
 };
 const serialized = JSON.stringify(prepared, null, 2);
 if (Buffer.byteLength(serialized) > 16 * 1024)

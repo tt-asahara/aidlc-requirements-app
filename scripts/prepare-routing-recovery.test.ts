@@ -25,7 +25,7 @@ const helper = fileURLToPath(
 const lock = JSON.parse(
   await readFile(new URL("../aidlc.lock.json", import.meta.url), "utf8"),
 ) as { sha: string };
-async function fixture() {
+async function fixture(stage = "rough-mockups") {
   const root = await mkdtemp(join(tmpdir(), "routing-preparation-"));
   roots.push(root);
   const sources = {
@@ -46,8 +46,7 @@ async function fixture() {
     join(root, ".claude/d-install-receipt.json"),
     JSON.stringify(receipt),
   );
-  const output =
-    "aidlc/spaces/default/intents/test/ideation/rough-mockups/ui-poc-rough-contract.md";
+  const output = `aidlc/spaces/default/intents/test/${stage === "rough-mockups" ? "ideation" : "inception"}/${stage}/${stage === "requirements-analysis" ? "requirements.md" : stage === "refined-mockups" ? "ui-poc-refined-contract.md" : "ui-poc-rough-contract.md"}`;
   await mkdir(dirname(join(root, output)), { recursive: true });
   await writeFile(join(root, output), "# fixture\n");
   const facts = join(root, "facts.json");
@@ -90,14 +89,18 @@ async function fixture() {
   return { root, output, facts, receipt, run, launch };
 }
 
-async function preflightFixture(coreSource: string) {
-  const f = await fixture();
+async function preflightFixture(coreSource: string, stage = "rough-mockups") {
+  const f = await fixture(stage);
   // This fixture tests delegation/failure propagation, not a copy of core's
   // Markdown grammar. Live verification uses the original pinned validator.
   const router = ".claude/tools/ui-poc-c-routing.cjs";
   const source = `module.exports = {
-    deriveEngineContext: () => ({stage:'rough-mockups',scope:'ui-poc-requirements',recordId:'test',unit:null,engineStateSha256:'state'}),
-    plan: () => ({pass:true,runtimeProfile:'requirements-c',comparisonTreatment:null,configSha256:'config',invocations:[]})
+    deriveEngineContext: (_,stage) => ({stage,scope:'ui-poc-requirements',recordId:'test',unit:null,engineStateSha256:'state'}),
+    resolveDesignSkill: () => 'selected-design',
+    plan: (stage,facts,scope,designSkill) => {
+      if(stage==='refined-mockups' && designSkill!=='selected-design') throw Error('Selected design was ignored');
+      return {pass:true,runtimeProfile:'requirements-c',comparisonTreatment:null,configSha256:'config',invocations:[],...(designSkill?{designSkill}:{})};
+    }
   };`;
   await writeFile(join(f.root, router), source);
   f.receipt.composeOwned[router] = createHash("sha256")
@@ -107,13 +110,36 @@ async function preflightFixture(coreSource: string) {
     join(f.root, ".claude/d-install-receipt.json"),
     JSON.stringify(f.receipt),
   );
-  await writeFile(join(f.root, ".claude/tools/aidlc-lib.ts"), coreSource);
-  for (const name of [
-    "rough-mockups-questions.md",
-    "wireframes.md",
-    "user-flow.md",
-  ])
-    await writeFile(join(f.root, dirname(f.output), name), "question bytes");
+  const produces = {
+    "rough-mockups": [
+      "wireframes",
+      "user-flow",
+      "rough-mockups-questions",
+      "ui-poc-rough-contract",
+    ],
+    "requirements-analysis": [
+      "requirements",
+      "requirements-analysis-questions",
+    ],
+    "refined-mockups": [
+      "mockups",
+      "interaction-spec",
+      "design-system-mapping",
+      "accessibility-checklist",
+      "refined-mockups-questions",
+      "ui-poc-refined-contract",
+    ],
+  }[stage];
+  if (!produces) throw Error("Unsupported test fixture stage");
+  await writeFile(
+    join(f.root, ".claude/tools/aidlc-lib.ts"),
+    `${coreSource}\nexport function findStageBySlug() { return {produces:${JSON.stringify(produces)}}; }`,
+  );
+  for (const name of produces)
+    await writeFile(
+      join(f.root, dirname(f.output), `${name}.md`),
+      "question bytes",
+    );
   return f;
 }
 
@@ -186,3 +212,26 @@ test("question structure success does not claim a confirmation receipt", async (
     confirmationReceiptVerified: false,
   });
 });
+
+for (const [stage, expected] of [
+  ["requirements-analysis", 2],
+  ["refined-mockups", 6],
+] as const)
+  test(`${stage} preparation uses core produces and the configured design choice`, async () => {
+    const f = await preflightFixture(
+      `
+      export function summaryConfirmationContentHash() { return 'core-content-hash'; }
+      export function summaryConfirmationAnswer() { return ''; }
+    `,
+      stage,
+    );
+    const result = await f.launch();
+    expect(result.code).toBe(0);
+    const prepared = JSON.parse(result.stdout);
+    expect(prepared.context.stage).toBe(stage);
+    expect(prepared.sensorChecks).toHaveLength(expected);
+    expect(prepared.questionPreflight.path).toEndWith(`${stage}-questions.md`);
+    expect(prepared.logIdentity.designSkill).toBe(
+      stage === "refined-mockups" ? "selected-design" : undefined,
+    );
+  });
