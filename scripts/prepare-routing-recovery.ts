@@ -102,6 +102,7 @@ const router = createRequire(import.meta.url)(await confined(routerPath)) as {
     designSkill?: string,
   ) => Plan;
   resolveDesignSkill: () => string;
+  engineRecord: (output: string, stage: string) => { recordRoot: string };
   lockedEntrypoint: (
     skill: string,
     entrypoint: string,
@@ -109,6 +110,9 @@ const router = createRequire(import.meta.url)(await confined(routerPath)) as {
   gitBlobHash: (bytes: Buffer) => string;
 };
 const context = { ...router.deriveEngineContext(outputPath, stage), attempt };
+const engineStatePath = await confined(
+  resolve(router.engineRecord(outputPath, stage).recordRoot, "aidlc-state.md"),
+);
 const plan = router.plan(
   stage,
   facts,
@@ -184,6 +188,16 @@ const prepared = {
   context,
   logIdentity: identity,
   bindingsToComputeAfterWriting: ["contextSha256", "factsSha256"],
+  refreshAfterEngineStateChange: {
+    readOnlyStateHash: [
+      "bun",
+      ".claude/tools/ui-poc-evidence.cjs",
+      "hash",
+      relative(workspace, engineStatePath),
+    ],
+    timing:
+      "Opening/re-entering a gate changes state bytes. After the real gate report, and before answering its approval, hash the current state and refresh only context.engineStateSha256, log.context and contextSha256. Preserve stage/scope/recordId/unit/attempt, facts, events, actors and produced documents; rerun every full sensor. This grants no approval.",
+  },
   hashActualWrittenFiles: [
     "bun",
     ".claude/tools/ui-poc-evidence.cjs",

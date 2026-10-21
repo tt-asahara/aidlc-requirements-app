@@ -62,6 +62,16 @@ attempt ID. Re-derive after a state change. For `ui-poc-requirements`, the plan'
 identity is `requirements-c` with `comparisonTreatment: null`; the UI contract's
 Arm C does not turn this into a comparison trial.
 
+The helper also prints the dedicated read-only hash argv for that engine record's
+`aidlc-state.md`. Opening or re-entering an actual gate changes those state bytes.
+After the gate report, refresh `engineStateSha256` from this exact file, retain all
+other context fields and original events, and hash the written context again to
+update the log binding. Run all full sensors before the approval answer. Never
+edit state/audit files or substitute a caption saying the gate opened: require
+the official transition and fresh review receipt. Ordinary gate reports use
+`awaiting-approval`; a revising stage re-enters through `revised` before another
+explicit approval response.
+
 The actual skill log needs the plan identity, exact context object and hashes of
 the written context/facts files. Record `skill-read` for actual pinned bytes read,
 then exactly one `skill-applied` per selected skill with every named input/output.

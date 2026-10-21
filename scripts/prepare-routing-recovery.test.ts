@@ -49,6 +49,10 @@ async function fixture(stage = "rough-mockups") {
   const output = `aidlc/spaces/default/intents/test/${stage === "rough-mockups" ? "ideation" : "inception"}/${stage}/${stage === "requirements-analysis" ? "requirements.md" : stage === "refined-mockups" ? "ui-poc-refined-contract.md" : "ui-poc-rough-contract.md"}`;
   await mkdir(dirname(join(root, output)), { recursive: true });
   await writeFile(join(root, output), "# fixture\n");
+  await writeFile(
+    join(root, dirname(output), "../..", "aidlc-state.md"),
+    "# fixture engine state\n",
+  );
   const facts = join(root, "facts.json");
   await writeFile(
     facts,
@@ -96,6 +100,7 @@ async function preflightFixture(coreSource: string, stage = "rough-mockups") {
   const router = ".claude/tools/ui-poc-c-routing.cjs";
   const source = `module.exports = {
     deriveEngineContext: (_,stage) => ({stage,scope:'ui-poc-requirements',recordId:'test',unit:null,engineStateSha256:'state'}),
+    engineRecord: output => ({recordRoot:require('node:path').resolve(require('node:path').dirname(output),'../..')}),
     resolveDesignSkill: () => 'selected-design',
     plan: (stage,facts,scope,designSkill) => {
       if(stage==='refined-mockups' && designSkill!=='selected-design') throw Error('Selected design was ignored');
