@@ -14,7 +14,7 @@ if (
   args[4] !== "--attempt"
 )
   throw new Error(
-    "Use --output-path <rough/refined contract or requirements.md> --facts <flat JSON> --attempt <positive integer> from the installed workspace",
+    "Use --output-path <rough/refined contract, requirements.md or stories.md> --facts <flat JSON> --attempt <positive integer> from the installed workspace",
   );
 const attempt = Number(args[5]);
 if (!Number.isSafeInteger(attempt) || attempt < 1)
@@ -53,6 +53,7 @@ const stage = basename(dirname(outputPath));
 const entrypoints: Record<string, string> = {
   "rough-mockups": "ui-poc-rough-contract.md",
   "requirements-analysis": "requirements.md",
+  "user-stories": "stories.md",
   "refined-mockups": "ui-poc-refined-contract.md",
 };
 if (entrypoints[stage] !== basename(outputPath))
@@ -153,6 +154,16 @@ const core = (await import(
   summaryConfirmationContentHash: (content: string) => string;
   summaryConfirmationAnswer: (content: string) => string | null;
   findStageBySlug: (slug: string) => { produces: string[] } | undefined;
+  checkSummaryConfirmationEvidence: (
+    projectDir: string,
+    stage: { produces: string[] },
+    options: { stateContent: string; scope: string },
+  ) => {
+    ok: boolean;
+    required?: boolean;
+    message?: string;
+    refusal?: { code: string };
+  };
 };
 const stageDefinition = core.findStageBySlug(stage);
 if (!stageDefinition?.produces.length)
@@ -164,11 +175,24 @@ const questionPreflight = {
   answer: core.summaryConfirmationAnswer(questions),
   confirmationReceiptVerified: false,
 };
+const summaryAuthority = core.checkSummaryConfirmationEvidence(
+  workspace,
+  stageDefinition,
+  {
+    stateContent: await readFile(engineStatePath, "utf8"),
+    scope: context.scope,
+  },
+);
 const sensorChecks = [];
 for (const name of stageDefinition.produces) {
   if (!/^[a-z][a-z0-9-]*$/.test(name))
     throw new Error("Unsupported installed produce name");
-  const path = await confined(resolve(dirname(outputPath), `${name}.md`));
+  const path = await confined(
+    resolve(
+      dirname(outputPath),
+      `${name}${name === "traceability" ? ".json" : ".md"}`,
+    ),
+  );
   sensorChecks.push([
     "bun",
     sensorPath,
@@ -184,6 +208,15 @@ const prepared = {
   installedSourceSha: receipt.sourceSha,
   selectedSkillPinsVerified: true,
   questionPreflight,
+  summaryAuthority: {
+    readyForReview: summaryAuthority.ok,
+    required: summaryAuthority.required ?? true,
+    ...(summaryAuthority.message ? { message: summaryAuthority.message } : {}),
+    ...(summaryAuthority.refusal
+      ? { code: summaryAuthority.refusal.code }
+      : {}),
+    approvalGranted: false,
+  },
   facts,
   context,
   logIdentity: identity,

@@ -5,9 +5,9 @@ This procedure prepares routing metadata through D's existing exports; it does n
 add a runner, create a turn, approve a stage, or claim that a skill was applied.
 
 The same helper accepts the actual `requirements-analysis/requirements.md` or
-`refined-mockups/ui-poc-refined-contract.md` entry point once the stage produces
+`user-stories/stories.md` or `refined-mockups/ui-poc-refined-contract.md` entry point once the stage produces
 and questions file exist. It gets the complete produces list from the installed
-core stage definition (rough: four, requirements: two, refined: six), and resolves
+core stage definition (rough: four, requirements: two, stories: four, refined: six), and resolves
 the configured refined design skill through the installed router. It never
 substitutes a default skill for the selected one. Supply the explicit facts for
 that stage, such as `unresolved_requirement_decisions` / `domain_language_conflict`
@@ -33,7 +33,15 @@ It also invokes the installed core `summaryConfirmationContentHash` and
 alone do not check that grammar. Do not append arbitrary headings after
 `Consolidated Summary Confirmation`; the core validator is authoritative.
 Its digest validates structure, not the existence or freshness of an answer
-receipt. After changing answers, use the ordinary decision/answer protocol:
+receipt. The separate `summaryAuthority.readyForReview` result comes from the
+original core `checkSummaryConfirmationEvidence`, using the real workspace,
+current engine state and derived scope. A false result includes the exact core
+reason and artifact path; stop before a paid review and repair that cause. It
+does not grant a stage approval. User Stories includes `traceability.json`, not a
+Markdown substitute. A valid question file alone is insufficient: for example,
+an assessment drafted before confirmation still needs an ordinary save after
+the current receipt even when the stories and personas were saved correctly.
+After changing answers, use the ordinary decision/answer protocol:
 clear the summary answer, present the new summary, wait for an explicit response,
 then record that response through the original tools. Never reuse an old
 confirmation for changed content. After the answer receipt, save every declared

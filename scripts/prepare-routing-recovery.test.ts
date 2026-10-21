@@ -46,7 +46,7 @@ async function fixture(stage = "rough-mockups") {
     join(root, ".claude/d-install-receipt.json"),
     JSON.stringify(receipt),
   );
-  const output = `aidlc/spaces/default/intents/test/${stage === "rough-mockups" ? "ideation" : "inception"}/${stage}/${stage === "requirements-analysis" ? "requirements.md" : stage === "refined-mockups" ? "ui-poc-refined-contract.md" : "ui-poc-rough-contract.md"}`;
+  const output = `aidlc/spaces/default/intents/test/${stage === "rough-mockups" ? "ideation" : "inception"}/${stage}/${stage === "user-stories" ? "stories.md" : stage === "requirements-analysis" ? "requirements.md" : stage === "refined-mockups" ? "ui-poc-refined-contract.md" : "ui-poc-rough-contract.md"}`;
   await mkdir(dirname(join(root, output)), { recursive: true });
   await writeFile(join(root, output), "# fixture\n");
   await writeFile(
@@ -122,6 +122,12 @@ async function preflightFixture(coreSource: string, stage = "rough-mockups") {
       "rough-mockups-questions",
       "ui-poc-rough-contract",
     ],
+    "user-stories": [
+      "stories",
+      "personas",
+      "user-stories-assessment",
+      "traceability",
+    ],
     "requirements-analysis": [
       "requirements",
       "requirements-analysis-questions",
@@ -138,11 +144,19 @@ async function preflightFixture(coreSource: string, stage = "rough-mockups") {
   if (!produces) throw Error("Unsupported test fixture stage");
   await writeFile(
     join(f.root, ".claude/tools/aidlc-lib.ts"),
-    `${coreSource}\nexport function findStageBySlug() { return {produces:${JSON.stringify(produces)}}; }`,
+    `${coreSource}\nexport function checkSummaryConfirmationEvidence(projectDir, stage, options) { if (!options.stateContent.includes("fixture engine state")) throw Error("Missing actual state"); return {ok:false,message:"assessment was saved before confirmation",refusal:{code:"SUMMARY_ARTIFACT_UNAUTHORIZED"}}; }\nexport function findStageBySlug() { return {produces:${JSON.stringify(produces)}}; }`,
+  );
+  await writeFile(
+    join(f.root, dirname(f.output), `${stage}-questions.md`),
+    "question bytes",
   );
   for (const name of produces)
     await writeFile(
-      join(f.root, dirname(f.output), `${name}.md`),
+      join(
+        f.root,
+        dirname(f.output),
+        `${name}${name === "traceability" ? ".json" : ".md"}`,
+      ),
       "question bytes",
     );
   return f;
@@ -220,6 +234,7 @@ test("question structure success does not claim a confirmation receipt", async (
 
 for (const [stage, expected] of [
   ["requirements-analysis", 2],
+  ["user-stories", 4],
   ["refined-mockups", 6],
 ] as const)
   test(`${stage} preparation uses core produces and the configured design choice`, async () => {
@@ -234,6 +249,17 @@ for (const [stage, expected] of [
     expect(result.code).toBe(0);
     const prepared = JSON.parse(result.stdout);
     expect(prepared.context.stage).toBe(stage);
+    expect(prepared.summaryAuthority).toEqual({
+      readyForReview: false,
+      required: true,
+      message: "assessment was saved before confirmation",
+      code: "SUMMARY_ARTIFACT_UNAUTHORIZED",
+      approvalGranted: false,
+    });
+    if (stage === "user-stories")
+      expect(prepared.sensorChecks.at(-1).at(-1)).toEndWith(
+        "traceability.json",
+      );
     expect(prepared.sensorChecks).toHaveLength(expected);
     expect(prepared.questionPreflight.path).toEndWith(`${stage}-questions.md`);
     expect(prepared.logIdentity.designSkill).toBe(
