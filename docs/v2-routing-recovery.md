@@ -19,6 +19,18 @@ checks selected skill bytes against the source lock, and invokes the installed
 routing tool is an error. Run it only in the trusted installed verification
 workspace, never against uploaded or arbitrary executable project content.
 
+It also invokes the installed core `summaryConfirmationContentHash` and
+`summaryConfirmationAnswer` on the actual stage questions file. The D sensors
+alone do not check that grammar. Do not append arbitrary headings after
+`Consolidated Summary Confirmation`; the core validator is authoritative.
+Its digest validates structure, not the existence or freshness of an answer
+receipt. After changing answers, use the ordinary decision/answer protocol:
+clear the summary answer, present the new summary, wait for an explicit response,
+then record that response through the original tools. Never reuse an old
+confirmation for changed content. Rebind actual source hashes and routing context
+afterward, preserving the actor and original application provenance, and repeat
+all four sensors before requesting a fresh review of the current fingerprint.
+
 Facts are an explicit, flat boolean object, for example:
 
 ```json

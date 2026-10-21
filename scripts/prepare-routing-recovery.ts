@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, relative, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 
 // Operator-only preparation in a trusted, installed synthetic workspace. This
 // prints a bounded plan; it writes no evidence and makes no model/network call.
@@ -119,6 +120,24 @@ const identity = {
   comparisonTreatment: plan.comparisonTreatment,
   configSha256: plan.configSha256,
 };
+// D's sensors do not replace the core question-file grammar. Use the installed
+// validator rather than maintaining a second, potentially permissive parser.
+const questionsPath = await confined(
+  resolve(dirname(outputPath), "rough-mockups-questions.md"),
+);
+const core = (await import(
+  pathToFileURL(await confined(".claude/tools/aidlc-lib.ts")).href
+)) as {
+  summaryConfirmationContentHash: (content: string) => string;
+  summaryConfirmationAnswer: (content: string) => string | null;
+};
+const questions = await readFile(questionsPath, "utf8");
+const questionPreflight = {
+  path: relative(workspace, questionsPath),
+  contentHash: core.summaryConfirmationContentHash(questions),
+  answer: core.summaryConfirmationAnswer(questions),
+  confirmationReceiptVerified: false,
+};
 const sensorChecks = [];
 for (const name of [
   "wireframes.md",
@@ -141,6 +160,7 @@ const prepared = {
   modelUsed: false,
   installedSourceSha: receipt.sourceSha,
   selectedSkillPinsVerified: true,
+  questionPreflight,
   facts,
   context,
   logIdentity: identity,

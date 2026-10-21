@@ -58,7 +58,7 @@ async function fixture() {
       state_model_uncertainty: true,
     }),
   );
-  const run = async () => {
+  const launch = async () => {
     const child = Bun.spawn(
       [
         process.execPath,
@@ -78,12 +78,43 @@ async function fixture() {
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),
     ]);
+    return { code, stdout, stderr };
+  };
+  const run = async () => {
+    const { code, stdout, stderr } = await launch();
     expect(code).not.toBe(0);
     expect(stdout).toBe("");
     expect(existsSync(join(root, "module-executed"))).toBe(false);
     return stderr;
   };
-  return { root, output, facts, receipt, run };
+  return { root, output, facts, receipt, run, launch };
+}
+
+async function preflightFixture(coreSource: string) {
+  const f = await fixture();
+  // This fixture tests delegation/failure propagation, not a copy of core's
+  // Markdown grammar. Live verification uses the original pinned validator.
+  const router = ".claude/tools/ui-poc-c-routing.cjs";
+  const source = `module.exports = {
+    deriveEngineContext: () => ({stage:'rough-mockups',scope:'ui-poc-requirements',recordId:'test',unit:null,engineStateSha256:'state'}),
+    plan: () => ({pass:true,runtimeProfile:'requirements-c',comparisonTreatment:null,configSha256:'config',invocations:[]})
+  };`;
+  await writeFile(join(f.root, router), source);
+  f.receipt.composeOwned[router] = createHash("sha256")
+    .update(source)
+    .digest("hex");
+  await writeFile(
+    join(f.root, ".claude/d-install-receipt.json"),
+    JSON.stringify(f.receipt),
+  );
+  await writeFile(join(f.root, ".claude/tools/aidlc-lib.ts"), coreSource);
+  for (const name of [
+    "rough-mockups-questions.md",
+    "wireframes.md",
+    "user-flow.md",
+  ])
+    await writeFile(join(f.root, dirname(f.output), name), "question bytes");
+  return f;
 }
 
 test("routing preparation rejects nested facts before loading an installed module", async () => {
@@ -122,4 +153,36 @@ test("routing preparation rejects a different source pin before loading code", a
     JSON.stringify({ ...f.receipt, sourceSha: "0".repeat(40) }),
   );
   expect(await f.run()).toContain("Installed source differs from app pin");
+});
+
+test("routing preparation propagates the core question validator rejection", async () => {
+  const f = await preflightFixture(`
+    export function summaryConfirmationContentHash(content) {
+      if (content !== 'question bytes') throw Error('wrong input');
+      throw Error('core rejected question structure');
+    }
+    export function summaryConfirmationAnswer() { throw Error('must not continue'); }
+  `);
+  const result = await f.launch();
+  expect(result.code).not.toBe(0);
+  expect(result.stdout).toBe("");
+  expect(result.stderr).toContain("core rejected question structure");
+});
+
+test("question structure success does not claim a confirmation receipt", async () => {
+  const f = await preflightFixture(`
+    export function summaryConfirmationContentHash(content) {
+      if (content !== 'question bytes') throw Error('wrong input');
+      return 'core-content-hash';
+    }
+    export function summaryConfirmationAnswer() { return ''; }
+  `);
+  const result = await f.launch();
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.stdout).questionPreflight).toEqual({
+    path: join(dirname(f.output), "rough-mockups-questions.md"),
+    contentHash: "core-content-hash",
+    answer: "",
+    confirmationReceiptVerified: false,
+  });
 });
