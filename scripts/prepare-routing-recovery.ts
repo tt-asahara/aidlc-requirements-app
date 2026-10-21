@@ -184,6 +184,14 @@ const prepared = {
   context,
   logIdentity: identity,
   bindingsToComputeAfterWriting: ["contextSha256", "factsSha256"],
+  hashActualWrittenFiles: [
+    "bun",
+    ".claude/tools/ui-poc-evidence.cjs",
+    "hash",
+    ...["ui-poc-routing-context.json", "ui-poc-routing-facts.json"].map(
+      (name) => relative(workspace, resolve(dirname(outputPath), name)),
+    ),
+  ],
   invocations: plan.invocations.map(
     ({ skill, decision, condition, entrypoints, inputs, outputs }) => ({
       skill,
@@ -207,7 +215,12 @@ const prepared = {
       "inputs: named file/hash or bounded value",
       "outputs: named actual file/hash",
     ],
-    skipped: ["type=skill-skipped", "skill", "condition", "observed reason"],
+    skipped: {
+      type: "skill-skipped",
+      skill: "<invocation.skill>",
+      condition: "<invocation.condition>",
+      reason: "<nonempty explanation of the observed false condition>",
+    },
     ...(plan.invocations.some((item) =>
       [...item.inputs, ...item.outputs].includes(
         "creator-confirmed-design-context-snapshot",

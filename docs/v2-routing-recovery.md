@@ -64,6 +64,9 @@ then exactly one `skill-applied` per selected skill with every named input/outpu
 Inputs may be bounded values or file/hash references; outputs are actual files.
 An explicit false conditional requires `skill-skipped` plus its observed reason.
 Do not synthesize successful application events from a plan or file list.
+The exact nonempty explanation key is `reason`, not `observedReason`. Hash the
+actual written context/facts files (including their whitespace), not temporary
+JSON reconstructions; the helper prints that exact dedicated hash argv.
 
 A prior read may be referenced only when the captured full content is verified
 against the current pinned bytes, with its original turn/tool provenance retained.
