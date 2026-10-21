@@ -3,6 +3,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { refinedAcCoverage } from "./refined-ac-coverage";
 
 // Operator-only preparation in a trusted, installed synthetic workspace. This
 // prints a bounded plan; it writes no evidence and makes no model/network call.
@@ -188,6 +189,29 @@ const summaryAuthority = core.checkSummaryConfirmationEvidence(
     scope: context.scope,
   },
 );
+let formalAcCoverage:
+  | (ReturnType<typeof refinedAcCoverage> & {
+      sourcePath: string;
+      sourceSha256: string;
+      contractSha256: string;
+    })
+  | undefined;
+if (stage === "refined-mockups") {
+  const sourcePath = await confined(
+    resolve(
+      router.engineRecord(outputPath, stage).recordRoot,
+      "inception/user-stories/stories.md",
+    ),
+  );
+  const source = await readFile(sourcePath, "utf8");
+  const contract = await readFile(outputPath, "utf8");
+  formalAcCoverage = {
+    sourcePath: relative(workspace, sourcePath),
+    sourceSha256: sha(source),
+    contractSha256: sha(contract),
+    ...refinedAcCoverage(source, contract),
+  };
+}
 const sensorChecks = [];
 for (const name of stageDefinition.produces) {
   if (!/^[a-z][a-z0-9-]*$/.test(name))
@@ -212,6 +236,7 @@ const prepared = {
   modelUsed: false,
   installedSourceSha: receipt.sourceSha,
   selectedSkillPinsVerified: true,
+  ...(formalAcCoverage ? { formalAcCoverage } : {}),
   questionPreflight,
   summaryAuthority: {
     readyForReview: summaryAuthority.ok,

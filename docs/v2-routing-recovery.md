@@ -62,6 +62,29 @@ source revision, fresh confirmation, saves, review and gate. Preserve the failed
 capture and draft. Do not rewrite snapshots, weaken the checker, or silently
 change an approved AC while editing HTML.
 
+For refined preparation, the helper also reads that engine record's actual
+`inception/user-stories/stories.md` and compares its formal AC definition set
+with `mappings[].ac`. It binds both raw source hashes and checks the complete
+`requiredMappings` key set. Stop before review when `formalAcCoverage.pass` is
+false: six legacy rough mappings cannot replace 45 formal ACs, and a separate
+`formalACs` extension cannot fill missing native mappings. Multiple ACs may share
+one HTML asset; one AC may cover several states. All remain in the inventory.
+Only recognized bold AC definition headings outside code fences are counted;
+unknown formats, duplicate definitions and oversized input fail verification.
+This operator check neither runs the AC behaviors nor replaces the native
+contract/hash sensors or stage approval. Preserve the source conditions and fix
+HTML/contract; a conflicting source requirement needs fresh confirmation and
+ordinary rework, never a silent relaxation to fit the test.
+
+Coverage can also run independently while the question file is still being
+repaired. It writes no evidence and exits nonzero on a mismatch:
+
+```sh
+bun /absolute/path/to/app/scripts/check-refined-ac-coverage.ts \
+  --stories aidlc/spaces/default/intents/ROUND/inception/user-stories/stories.md \
+  --contract aidlc/spaces/default/intents/ROUND/inception/refined-mockups/ui-poc-refined-contract.md
+```
+
 Facts are an explicit, flat boolean object, for example:
 
 ```json

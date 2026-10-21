@@ -159,6 +159,19 @@ async function preflightFixture(coreSource: string, stage = "rough-mockups") {
       ),
       "question bytes",
     );
+  if (stage === "refined-mockups") {
+    const sourcePath = join(
+      f.root,
+      dirname(f.output),
+      "../../inception/user-stories/stories.md",
+    );
+    await mkdir(dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, "**AC1.1.1 — Original condition**\n");
+    await writeFile(
+      join(f.root, f.output),
+      '```ui-poc-contract\n{"schema":2,"stage":"refined-mockups","mappings":[],"requiredMappings":[]}\n```\n',
+    );
+  }
   return f;
 }
 
@@ -266,6 +279,15 @@ for (const [stage, expected] of [
         "traceability.json",
       );
     expect(prepared.sensorChecks).toHaveLength(expected);
+    if (stage === "refined-mockups") {
+      expect(prepared.formalAcCoverage).toMatchObject({
+        pass: false,
+        sourceACCount: 1,
+        missing: ["AC1.1.1"],
+        approvalGranted: false,
+      });
+      expect(prepared.formalAcCoverage.sourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    }
     expect(prepared.questionPreflight.path).toEndWith(`${stage}-questions.md`);
     expect(prepared.logIdentity.designSkill).toBe(
       stage === "refined-mockups" ? "selected-design" : undefined,
