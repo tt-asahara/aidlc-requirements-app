@@ -154,6 +154,7 @@ const core = (await import(
   summaryConfirmationContentHash: (content: string) => string;
   summaryConfirmationAnswer: (content: string) => string | null;
   findStageBySlug: (slug: string) => { produces: string[] } | undefined;
+  parseCheckboxes: (state: string) => Array<{ slug: string; state: string }>;
   checkSummaryConfirmationEvidence: (
     projectDir: string,
     stage: { produces: string[] },
@@ -175,11 +176,15 @@ const questionPreflight = {
   answer: core.summaryConfirmationAnswer(questions),
   confirmationReceiptVerified: false,
 };
+const engineState = await readFile(engineStatePath, "utf8");
+const currentMark = core
+  .parseCheckboxes(engineState)
+  .find((item) => item.slug === stage)?.state;
 const summaryAuthority = core.checkSummaryConfirmationEvidence(
   workspace,
   stageDefinition,
   {
-    stateContent: await readFile(engineStatePath, "utf8"),
+    stateContent: engineState,
     scope: context.scope,
   },
 );
@@ -301,6 +306,36 @@ const prepared = {
       : {}),
   },
   sensorChecks,
+  reviewProtocol: {
+    currentMark,
+    request: [
+      "bun",
+      ".claude/tools/aidlc-log.ts",
+      "review",
+      "--stage",
+      stage,
+      "--reviewer",
+      "aidlc-product-lead-agent",
+      "--iteration",
+      "<next iteration from original engine>",
+    ],
+    record:
+      "Use the actual request's review file and returned recordVerdict command after the reviewer completes. Never invent a pending request or READY result.",
+    gateAfterVerifiedReview: [
+      "bun",
+      ".claude/tools/aidlc.ts",
+      "engine",
+      "orchestrate",
+      "report",
+      "--stage",
+      stage,
+      "--result",
+      currentMark === "revising" ? "revised" : "awaiting-approval",
+    ],
+    warning:
+      "Do not run orchestrate next --stage to inspect or refresh the current stage: it is a REDO transition, invalidates the confirmed attempt, and requires a new genuine confirmation and all subsequent saves. Request the review directly after the current authority check passes; do not restart an already confirmed stage.",
+    approvalRequiresFreshReply: true,
+  },
   completion:
     "Not completion evidence. After the genuine summary-confirmation answer receipt, save every produced document through the ordinary Write tool even when a pre-confirmation draft has identical content: its write must descend from that confirmation. Record only actual reads/application required by the selected invocations, bind exact written bytes using the installed dedicated hash command, and require every declared full sensor to pass. Re-derive context if engine state changes. No approval or override is granted.",
 };

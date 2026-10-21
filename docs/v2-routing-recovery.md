@@ -78,7 +78,13 @@ update the log binding. Run all full sensors before the approval answer. Never
 edit state/audit files or substitute a caption saying the gate opened: require
 the official transition and fresh review receipt. Ordinary gate reports use
 `awaiting-approval`; a revising stage re-enters through `revised` before another
-explicit approval response.
+explicit approval response. The helper uses the original core checkbox parser to
+print that distinction and the direct `aidlc-log.ts review` request argv. Do not
+run `orchestrate next --stage` to read or refresh a current stage: that is a REDO
+transition which invalidates the confirmed attempt. Use the current stage
+artifacts and direct review request after authority passes; never restart merely
+to obtain a review command. Record only the verdict of an actual pending request,
+using its returned command and review file.
 
 The actual skill log needs the plan identity, exact context object and hashes of
 the written context/facts files. Record `skill-read` for actual pinned bytes read,

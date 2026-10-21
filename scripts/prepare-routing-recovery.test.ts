@@ -144,7 +144,7 @@ async function preflightFixture(coreSource: string, stage = "rough-mockups") {
   if (!produces) throw Error("Unsupported test fixture stage");
   await writeFile(
     join(f.root, ".claude/tools/aidlc-lib.ts"),
-    `${coreSource}\nexport function checkSummaryConfirmationEvidence(projectDir, stage, options) { if (!options.stateContent.includes("fixture engine state")) throw Error("Missing actual state"); return {ok:false,message:"assessment was saved before confirmation",refusal:{code:"SUMMARY_ARTIFACT_UNAUTHORIZED"}}; }\nexport function findStageBySlug() { return {produces:${JSON.stringify(produces)}}; }`,
+    `${coreSource}\nexport function parseCheckboxes() { return [{slug:"${stage}",state:"revising"}]; }\nexport function checkSummaryConfirmationEvidence(projectDir, stage, options) { if (!options.stateContent.includes("fixture engine state")) throw Error("Missing actual state"); return {ok:false,message:"assessment was saved before confirmation",refusal:{code:"SUMMARY_ARTIFACT_UNAUTHORIZED"}}; }\nexport function findStageBySlug() { return {produces:${JSON.stringify(produces)}}; }`,
   );
   await writeFile(
     join(f.root, dirname(f.output), `${stage}-questions.md`),
@@ -249,6 +249,11 @@ for (const [stage, expected] of [
     expect(result.code).toBe(0);
     const prepared = JSON.parse(result.stdout);
     expect(prepared.context.stage).toBe(stage);
+    expect(prepared.reviewProtocol.currentMark).toBe("revising");
+    expect(prepared.reviewProtocol.gateAfterVerifiedReview.at(-1)).toBe(
+      "revised",
+    );
+    expect(prepared.reviewProtocol.request).toContain("review");
     expect(prepared.summaryAuthority).toEqual({
       readyForReview: false,
       required: true,
