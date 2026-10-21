@@ -93,6 +93,16 @@ all four full adapters. A zero process exit code alone is insufficient. Preserve
 findings and stop for missing context/application or renderer observations.
 Never use a gate override or migrate legacy evidence just to pass.
 
+Repeat those checks after recording the review. `READY` text alone does not
+establish that findings were parsed: the core can retain a blocking `R-00`
+fallback for an unreadable report. Review reports must use the exact `Prior
+findings` table (`ID`, `Now`, `Severity`, `Note`) and `New findings` table
+(`Severity`, `Location`, `Finding`, `Required action`). Prior IDs must be the
+actual engine-assigned `R-<number>` IDs; do not invent `F-1` aliases. Preserve
+real findings and obtain a new formal review when repairing a recorded malformed
+report. Inspect the canonical `findings`/`derived_findings`, all full sensor
+results, and current artifact fingerprint before presenting the stage gate.
+
 An upstream recurrence fix would put these structural examples and complete
 adapter commands into the rough/refined contribution and runtime contract. This
 application procedure uses existing installed interfaces and does not change or
