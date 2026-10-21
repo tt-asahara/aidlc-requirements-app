@@ -52,6 +52,16 @@ provenance. Rebind actual source hashes and routing context
 afterward, preserving the actor and original application provenance, and repeat
 all four sensors before requesting a fresh review of the current fingerprint.
 
+Before approving formal AC, compare any declared `data-ui-screen` /
+`data-ui-state` literals with the actual approved rough snapshot and upstream
+state inventory. The native semantic snapshot requires `SCREEN-*` / `STATE-*`
+IDs. Summary authority and traceability can pass while AC mistakenly prescribes
+lowercase DOM values; an HTML following those values still fails the original
+capture. Correct such a contradiction through the current intent's ordinary
+source revision, fresh confirmation, saves, review and gate. Preserve the failed
+capture and draft. Do not rewrite snapshots, weaken the checker, or silently
+change an approved AC while editing HTML.
+
 Facts are an explicit, flat boolean object, for example:
 
 ```json
