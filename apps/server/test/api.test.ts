@@ -231,6 +231,73 @@ test("I1: typed text is only trimmed; actions are exactly the fixed strings and 
     toPrompt({ origin: "typed", text: "x".repeat(20001) }),
   ).toThrow();
 });
+test("a lettered gate supersedes an earlier numbered summary", () => {
+  const summary =
+    "## Handoff\n1. Preserve input\n2. Keep the booking unchanged";
+  for (const gate of [
+    "A. Approve\nB. Request Changes",
+    "**A. Approve**\n\n**B. Request Changes**",
+  ]) {
+    const response = `${summary}\n\n## Gate\n${gate}`;
+    expect(extractOptions(response)).toEqual([]);
+    expect(() =>
+      toPrompt(
+        { origin: "option", optionLabel: "1. Preserve input" },
+        response,
+      ),
+    ).toThrow("Option is not in the latest response");
+    expect(
+      toPrompt({ origin: "typed", text: "A. Approve" }, response).promptText,
+    ).toBe("A. Approve");
+    expect(
+      extractOptions(`${response}\n\n1. Current answer\n2. Other answer`).map(
+        (option) => option.label,
+      ),
+    ).toEqual(["1. Current answer", "2. Other answer"]);
+  }
+});
+
+test("a numbered summary cannot admit an option turn at a later lettered gate", async () => {
+  let calls = 0;
+  const f = await setup({
+    async run() {
+      calls++;
+      return {
+        ...success(),
+        resultText:
+          "## Handoff\n1. Preserve input\n2. Keep the booking unchanged\n\n## Gate\n**A. Approve**\n\n**B. Request Changes**",
+      };
+    },
+  });
+  expect((await (await f.request("/api/health")).json()).runner).toBe("fake");
+  const id = await f.create();
+  const first = await f.request(`/api/projects/${id}/turns`, {
+    json: { origin: "typed", text: "Show the current gate" },
+  });
+  expect(first.status).toBe(202);
+  await f.turns.wait((await first.json()).turn.id);
+  const expectedContext = await (
+    await f.request(`/api/projects/${id}/context`)
+  ).json();
+  const rejected = await f.request(`/api/projects/${id}/turns`, {
+    json: {
+      origin: "option",
+      optionLabel: "1. Preserve input",
+      expectedContext,
+    },
+  });
+  expect(rejected.status).toBe(400);
+  expect(f.store.listTurns(id)).toHaveLength(1);
+  expect(calls).toBe(1);
+  const explicit = await f.request(`/api/projects/${id}/turns`, {
+    json: { origin: "typed", text: "A. Approve", expectedContext },
+  });
+  expect(explicit.status).toBe(202);
+  const turn = (await explicit.json()).turn;
+  await f.turns.wait(turn.id);
+  expect(f.store.getTurn(turn.id)?.promptText).toBe("A. Approve");
+});
+
 test("all project endpoints enforce owner and child-resource project membership", async () => {
   const f = await setup();
   const id = await f.create();
