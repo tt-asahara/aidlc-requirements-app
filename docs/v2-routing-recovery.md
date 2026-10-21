@@ -180,3 +180,14 @@ An upstream recurrence fix would put these structural examples and complete
 adapter commands into the rough/refined contribution and runtime contract. This
 application procedure uses existing installed interfaces and does not change or
 publish upstream source.
+
+The bounded preparation now includes concrete `fileExamples`. Design Context and
+WCAG corrections are separate JSON files, not Markdown or extra log events. The
+question source kind is `aidlc-questions`; `useCases` is a nonempty string, and
+`commonBrief` binds the same actual confirmed brief bytes. The example keeps
+`creatorConfirmed:false` until the observed answer has been checked. Every
+reference uses the exact selected name and `kind:file`; bounded inputs such as
+timebox use `kind:value`. File hashes alone never prove a read or an application.
+Keep the actual actor and turn/tool provenance; correct unsupported claims while
+preserving the original log. These examples neither create evidence nor alter
+installed validators, routing decisions or gate authority.

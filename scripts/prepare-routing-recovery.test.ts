@@ -262,6 +262,22 @@ for (const [stage, expected] of [
     expect(result.code).toBe(0);
     const prepared = JSON.parse(result.stdout);
     expect(prepared.context.stage).toBe(stage);
+    const example = prepared.fileExamples.designContext;
+    expect(example.creatorConfirmed).toBe(false);
+    expect(example.source.kind).toBe("aidlc-questions");
+    expect(example.source.path).toBe(prepared.questionPreflight.path);
+    expect(example.source.sha256).toBe(
+      createHash("sha256").update("question bytes").digest("hex"),
+    );
+    expect(example.commonBrief).toEqual({
+      path: example.source.path,
+      sha256: example.source.sha256,
+    });
+    expect(typeof example.useCases).toBe("string");
+    expect(prepared.fileExamples.valueInput.kind).toBe("value");
+    expect(prepared.fileExamples.instructions).toContain(
+      "not evidence or approval",
+    );
     expect(prepared.reviewProtocol.currentMark).toBe("revising");
     expect(prepared.reviewProtocol.gateAfterVerifiedReview.at(-1)).toBe(
       "revised",

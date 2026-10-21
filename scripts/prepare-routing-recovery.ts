@@ -330,6 +330,45 @@ const prepared = {
         }
       : {}),
   },
+  fileExamples: {
+    instructions:
+      "These are JSON file shapes, not evidence or approval. Use only selected invocation names. Fill creator fields from the actual observed answer before setting creatorConfirmed true. Hashing a method file does not establish a read; retain the actual actor, turn/tool and timestamp. Do not put Markdown in a referenced JSON file.",
+    designContext: {
+      schema: 1,
+      creatorConfirmed: false,
+      source: {
+        kind: "aidlc-questions",
+        path: relative(workspace, questionsPath),
+        sha256: sha(questions),
+      },
+      commonBrief: {
+        path: relative(workspace, questionsPath),
+        sha256: sha(questions),
+      },
+      audience: "<nonempty observed creator answer>",
+      useCases: "<nonempty string, not an array>",
+      brandTone: "<nonempty observed creator answer>",
+    },
+    accessibilityCorrection: {
+      schema: 1,
+      pinnedSourcePreserved: true,
+      sourceStatement: "18px+ or 14px bold",
+      normalCssPx: 24,
+      boldCssPx: 18.6667,
+      normativeBasis: "WCAG 18pt or 14pt bold",
+    },
+    fileReference: {
+      name: "<exact selected invocation input/output name>",
+      kind: "file",
+      path: "<actual written workspace-relative file>",
+      sha256: "<dedicated hash of actual bytes>",
+    },
+    valueInput: {
+      name: "<exact selected invocation input name, e.g. timebox>",
+      kind: "value",
+      value: "<actual bounded input>",
+    },
+  },
   sensorChecks,
   reviewProtocol: {
     currentMark,
