@@ -36,7 +36,11 @@ Its digest validates structure, not the existence or freshness of an answer
 receipt. After changing answers, use the ordinary decision/answer protocol:
 clear the summary answer, present the new summary, wait for an explicit response,
 then record that response through the original tools. Never reuse an old
-confirmation for changed content. Rebind actual source hashes and routing context
+confirmation for changed content. After the answer receipt, save every declared
+produced document again through the ordinary `Write` tool, even if its earlier
+draft already has the correct content. Core binds the write to the confirmation's
+authorization ID; changing an mtime or editing an audit row cannot replace that
+provenance. Rebind actual source hashes and routing context
 afterward, preserving the actor and original application provenance, and repeat
 all four sensors before requesting a fresh review of the current fingerprint.
 

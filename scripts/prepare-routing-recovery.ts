@@ -255,7 +255,7 @@ const prepared = {
   },
   sensorChecks,
   completion:
-    "Not completion evidence. Record only actual reads/application required by the selected invocations, bind exact written bytes using the installed dedicated hash command, and require every declared full sensor to pass. Re-derive context if engine state changes. No approval or override is granted.",
+    "Not completion evidence. After the genuine summary-confirmation answer receipt, save every produced document through the ordinary Write tool even when a pre-confirmation draft has identical content: its write must descend from that confirmation. Record only actual reads/application required by the selected invocations, bind exact written bytes using the installed dedicated hash command, and require every declared full sensor to pass. Re-derive context if engine state changes. No approval or override is granted.",
 };
 const serialized = JSON.stringify(prepared, null, 2);
 if (Buffer.byteLength(serialized) > 16 * 1024)
