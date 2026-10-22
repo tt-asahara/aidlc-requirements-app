@@ -31,7 +31,11 @@ export async function launchCaptureBrowser(home: string, executable?: string) {
       "--metrics-recording-only",
       "--mute-audio",
       "--disable-breakpad",
-      "about:blank",
+      "--no-startup-window",
+      "--hide-scrollbars",
+      "--enable-automation",
+      "--force-color-profile=srgb",
+      "--disable-features=PaintHolding",
     ],
     {
       cwd: home,
