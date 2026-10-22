@@ -39,7 +39,11 @@ export type Turn = {
 export type SubmitTurn = Pick<
   Turn,
   "projectId" | "submittedBy" | "origin" | "promptText"
-> & { action?: string; expectedContext?: ExpectedContext };
+> & {
+  action?: string;
+  expectedContext?: ExpectedContext;
+  visualAttachmentId?: string;
+};
 export class TurnAdmissionError extends Error {
   constructor(
     public readonly status: 402 | 404 | 409,

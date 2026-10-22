@@ -10,6 +10,8 @@ import {
 } from "../runner/types.ts";
 import type { Store, SubmitTurn, Turn } from "../store/types.ts";
 
+import { VisualSnapshots } from "../visual/snapshots.ts";
+
 export type TurnManagerConfig = {
   executionMode?: "fake" | "claude";
   fakeScenario?: "requirements" | null;
@@ -18,6 +20,7 @@ export type TurnManagerConfig = {
   turnBudgetUsd: number;
   projectBudgetUsd: number;
   timeoutMs: number;
+  browserExecutable?: string | undefined;
 };
 /** Submission is explicit; there is no polling, queue replay, automatic retry or generated approval. */
 export class TurnManager {
@@ -41,7 +44,7 @@ export class TurnManager {
       ...this.config,
       logDir: join(this.config.dataDir, "logs"),
     });
-    return this.launch(turn, input.expectedContext);
+    return this.launch(turn, input.expectedContext, input.visualAttachmentId);
   }
   reconnect(projectId: string, submittedBy: string): Turn {
     if (this.closed) throw new Error("Turn manager is closed");
@@ -59,11 +62,22 @@ export class TurnManager {
       ),
     );
   }
-  private launch(turn: Turn, expectedContext?: ExpectedContext): Turn {
+  private launch(
+    turn: Turn,
+    expectedContext?: ExpectedContext,
+    visualAttachmentId?: string,
+  ): Turn {
     const controller = new AbortController();
     // Yield one microtask so the caller can subscribe or cancel a queued turn.
     const promise = Promise.resolve()
-      .then(() => this.execute(turn, controller.signal, expectedContext))
+      .then(() =>
+        this.execute(
+          turn,
+          controller.signal,
+          expectedContext,
+          visualAttachmentId,
+        ),
+      )
       .finally(() => {
         this.active.delete(turn.id);
       });
@@ -100,6 +114,7 @@ export class TurnManager {
     turn: Turn,
     signal: AbortSignal,
     expectedContext?: ExpectedContext,
+    visualAttachmentId?: string,
   ) {
     if (signal.aborted) {
       this.store.finishTurn(
@@ -150,6 +165,34 @@ export class TurnManager {
         });
         return;
       }
+      let images: import("../visual/snapshots.ts").RunnerImage[] | undefined;
+      if (visualAttachmentId) {
+        if (!expectedContext) throw new Error("Image context required");
+        const { snapshot, bytes } = await new VisualSnapshots(
+          this.config.dataDir,
+          this.config.browserExecutable,
+        ).validate(this.store, project, visualAttachmentId, expectedContext, {
+          id: turn.id,
+          seq: turn.seq,
+        });
+        images = [
+          {
+            mediaType: "image/png",
+            data: Buffer.from(bytes).toString("base64"),
+            sha256: snapshot.image.sha256,
+            width: snapshot.viewport.width,
+            height: snapshot.viewport.height,
+          },
+        ];
+      }
+      if (signal.aborted) {
+        this.store.finishTurn(turn.id, {
+          ...failedOutcome("Cancelled before CLI started", "cancelled"),
+          sessionCostUsd: 0,
+          numTurns: 0,
+        });
+        return;
+      }
       invoked = true;
       const outcome = await this.runner.run(
         {
@@ -158,6 +201,7 @@ export class TurnManager {
           claudeSessionId: turn.claudeSessionId,
           isFirstTurn: project.claudeSessionStarted === 0,
           prompt: turn.promptText,
+          ...(images ? { images } : {}),
           allowedTools: [
             ...new Set([...allow, ...this.store.approvedRules(project.id)]),
           ],

@@ -51,6 +51,7 @@ export type TurnContent =
 export type SendTurn = TurnContent & {
   expectedContext?: import("./mockups.ts").ExpectedContext;
   purpose?: "mockup_revision";
+  visualAttachmentId?: string;
 };
 export type ProjectSummary = {
   executionMode: "unknown" | "fake" | "claude";
@@ -116,3 +117,5 @@ export type {
   MockupsResponse,
 } from "./mockups.ts";
 export { extractOptions } from "./options.ts";
+export type { VisualSelection, VisualSnapshot } from "./visual.ts";
+export { validVisualSelection, visualReferenceText } from "./visual.ts";

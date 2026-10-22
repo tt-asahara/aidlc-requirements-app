@@ -306,3 +306,60 @@ test("reconnect requires the actual execution-error subtype, not a similar phras
   expect(isMissingSession(parse("error_during_execution"))).toBe(true);
   expect(isMissingSession(parse("error_max_turns"))).toBe(false);
 });
+
+test("multimodal stdin delivers the exact PNG bytes through the process watchdog; logs keep a hash receipt", async () => {
+  const { root, input } = await setup();
+  const { createHash } = await import("node:crypto");
+  const bytes = await Bun.file(
+    new URL("../../web/src/demo/lunch-reference.png", import.meta.url),
+  ).arrayBuffer();
+  const sha256 = createHash("sha256")
+    .update(new Uint8Array(bytes))
+    .digest("hex");
+  const image = {
+    mediaType: "image/png" as const,
+    data: Buffer.from(bytes).toString("base64"),
+    sha256,
+    width: 900,
+    height: 860,
+  };
+  const multimodal = { ...input, images: [image] };
+  const bin = join(root, "image-cli");
+  await writeFile(
+    bin,
+    `#!${process.execPath} --no-env-file
+const argv=process.argv.slice(2); const row=JSON.parse(await Bun.stdin.text());
+const b=row.message.content.find(b=>b.type==='image'); const bytes=Buffer.from(b.source.data,'base64');
+console.log(JSON.stringify({type:'system',subtype:'init',session_id:row.session_id,model:'test'}));
+console.log(JSON.stringify(row));
+console.log(JSON.stringify({type:'result',subtype:'success',total_cost_usd:0,num_turns:1,result:JSON.stringify({sha256:new Bun.CryptoHasher('sha256').update(bytes).digest('hex'),bytes:bytes.length,text:row.message.content.find(b=>b.type==='text').text,format:argv[argv.indexOf('--input-format')+1],argvHasImage:argv.some(a=>a.includes('iVBOR'))})}));`,
+  );
+  await chmod(bin, 0o700);
+  const outcome = await new ClaudeCliRunner(
+    bin,
+    { PATH: process.env.PATH },
+    50,
+  ).run(multimodal, () => {}, new AbortController().signal);
+  expect(outcome.status).toBe("succeeded");
+  expect(JSON.parse(outcome.resultText ?? "{}")).toEqual({
+    sha256,
+    bytes: bytes.byteLength,
+    text: input.prompt,
+    format: "stream-json",
+    argvHasImage: false,
+  });
+  const receipt = JSON.parse(
+    await readFile(`${input.logPath}.input.json`, "utf8"),
+  );
+  expect(receipt.images[0]).toMatchObject({
+    sha256,
+    bytes: bytes.byteLength,
+    mediaType: "image/png",
+    width: 900,
+    height: 860,
+  });
+  expect(await readFile(input.logPath, "utf8")).not.toContain(image.data);
+  expect(await readFile(input.logPath, "utf8")).toContain(
+    "IMAGE BYTES OMITTED",
+  );
+});

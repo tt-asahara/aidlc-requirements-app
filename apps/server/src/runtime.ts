@@ -178,6 +178,7 @@ export async function createRuntime(config: ReturnType<typeof readConfig>) {
     turnBudgetUsd: config.turnBudgetUsd,
     projectBudgetUsd: config.projectBudgetUsd,
     timeoutMs: config.turnTimeoutMs,
+    browserExecutable: config.browserExecutable,
   });
   let closed = false;
   return {

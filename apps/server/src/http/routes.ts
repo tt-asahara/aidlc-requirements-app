@@ -1,4 +1,5 @@
 import { lstat } from "node:fs/promises";
+import { validVisualSelection } from "@aidlc/shared";
 import { zipSync } from "fflate";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -30,6 +31,11 @@ import {
 import { readProgress } from "../reader/progress.ts";
 import { scenarioProgress } from "../runner/scenario.ts";
 import { type Store, TurnAdmissionError } from "../store/types.ts";
+import {
+  parseViewport,
+  parseVisualId,
+  VisualSnapshots,
+} from "../visual/snapshots.ts";
 import { readAidlcLock } from "../workspace/aidlc.ts";
 import { sanitizeDiagnostic } from "../workspace/command.ts";
 import { projectWorkspacePath } from "../workspace/paths.ts";
@@ -49,12 +55,16 @@ export type ApiDependencies = {
   turns: TurnManager;
   workspaces: WorkspaceStorage;
   provisions: Set<Promise<void>>;
+  visuals?: VisualSnapshots;
 };
 type Variables = { userId: string };
 export function projectRoutes(deps: ApiDependencies) {
   const app = new Hono<{ Variables: Variables }>();
   const { store, turns, config } = deps;
   const tokens = createPreviewTokens();
+  const visuals =
+    deps.visuals ??
+    new VisualSnapshots(config.dataDir, config.browserExecutable);
   app.onError((error, c) => {
     if (error instanceof ReaderError || error instanceof TurnAdmissionError)
       return c.json(
@@ -236,6 +246,78 @@ export function projectRoutes(deps: ApiDependencies) {
       await readMockups(project.workspaceDir, c.req.query("intent") ?? ""),
     );
   });
+  app.post("/api/projects/:id/visual-snapshots", async (c) => {
+    const project = executionProject(c.req.param("id"), c.get("userId"));
+    const body = (await json(c.req.raw)) as Record<string, unknown>;
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      Object.keys(body).some(
+        (k) => !["expectedContext", "viewport"].includes(k),
+      )
+    )
+      throw new PromptError("Invalid capture request");
+    if (
+      store
+        .listTurns(project.id)
+        .some((t) => ["queued", "running"].includes(t.status))
+    )
+      throw new TurnAdmissionError(409, "実行中は撮影できません。");
+    const expected = parseExpectedContext(body.expectedContext);
+    if (!expected?.reference) throw new PromptError("Reference required");
+    return c.json(
+      {
+        snapshot: await visuals.capture(
+          store,
+          project,
+          expected,
+          parseViewport(body.viewport),
+        ),
+      },
+      201,
+    );
+  });
+  app.post(
+    "/api/projects/:id/visual-snapshots/:snapshotId/annotations",
+    async (c) => {
+      const project = executionProject(c.req.param("id"), c.get("userId"));
+      const body = (await json(c.req.raw)) as Record<string, unknown>;
+      if (
+        !body ||
+        typeof body !== "object" ||
+        Object.keys(body).length !== 1 ||
+        !validVisualSelection(body.selection)
+      )
+        throw new PromptError("Invalid annotation");
+      return c.json(
+        {
+          snapshot: await visuals.annotate(
+            store,
+            project,
+            parseVisualId(c.req.param("snapshotId")),
+            body.selection,
+          ),
+        },
+        201,
+      );
+    },
+  );
+  app.get("/api/projects/:id/visual-snapshots/:snapshotId/image", async (c) => {
+    const project = ownProject(c.req.param("id"), c.get("userId"));
+    const { bytes } = await visuals.load(
+      project,
+      parseVisualId(c.req.param("snapshotId")),
+    );
+    return new Response(new Uint8Array(bytes).buffer, {
+      headers: {
+        "Content-Type": "image/png",
+        "Content-Security-Policy": "sandbox; default-src 'none'",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  });
   app.get("/api/projects/:id/turns", (c) => {
     const limitRaw = c.req.query("limit") ?? "50";
     const beforeRaw = c.req.query("before");
@@ -300,11 +382,30 @@ export function projectRoutes(deps: ApiDependencies) {
       input.promptText = visible;
     }
 
+    const visualValue = (body as { visualAttachmentId?: unknown })
+      .visualAttachmentId;
+    let visualAttachmentId: string | undefined;
+    if (visualValue !== undefined) {
+      visualAttachmentId = parseVisualId(visualValue);
+      if (
+        input.origin !== "typed" ||
+        purpose !== "mockup_revision" ||
+        !expectedContext?.reference
+      )
+        throw new PromptError("Image requires typed revision context");
+      await visuals.validate(
+        store,
+        project,
+        visualAttachmentId,
+        expectedContext,
+      );
+    }
     return c.json(
       {
         turn: publicTurn(
           turns.submit({
             ...input,
+            ...(visualAttachmentId ? { visualAttachmentId } : {}),
             ...(expectedContext ? { expectedContext } : {}),
             projectId: c.req.param("id"),
             submittedBy: c.get("userId"),

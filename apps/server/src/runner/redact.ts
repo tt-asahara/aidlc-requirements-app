@@ -21,6 +21,23 @@ export function makeRedactor(env: Record<string, string | undefined>) {
     if (typeof input === "string") return redact(input);
     if (Array.isArray(input)) return input.map(value);
     if (input && typeof input === "object") {
+      const block = input as Record<string, unknown>;
+      if (
+        block.type === "image" &&
+        block.source &&
+        typeof block.source === "object"
+      ) {
+        const source = block.source as Record<string, unknown>;
+        if (source.type === "base64")
+          return {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: source.media_type,
+              data: "[IMAGE BYTES OMITTED]",
+            },
+          };
+      }
       return Object.fromEntries(
         Object.entries(input).map(([key, entry]) => [
           key,
