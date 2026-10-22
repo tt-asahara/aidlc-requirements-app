@@ -8,7 +8,6 @@ import type {
   VisualSnapshot,
 } from "@aidlc/shared";
 import { validVisualSelection } from "@aidlc/shared";
-import { chromium } from "playwright-core";
 import { PromptError } from "../prompts/index.ts";
 import { listArtifacts, readArtifact } from "../reader/artifacts.ts";
 import { stale, validateContext } from "../reader/context.ts";
@@ -25,8 +24,8 @@ import {
   type Store,
   TurnAdmissionError,
 } from "../store/types.ts";
+import { runCaptureWorker, WorkerFailure } from "./worker-client.ts";
 
-const ORIGIN = "https://aidlc-render.invalid";
 const TTL = 20 * 60_000;
 const MAX_PNG = 2 * 1024 * 1024;
 const idPattern =
@@ -260,155 +259,29 @@ export class VisualSnapshots {
         "別の画像を撮影中です。完了後に操作してください。",
       );
     VisualSnapshots.capturing = true;
-    let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
-    let watchdog: ReturnType<typeof setTimeout> | undefined;
-    let blocked = 0;
-    let browserHome: string | undefined;
-    let phase = "launch";
+    let home: string | undefined;
     try {
-      browserHome = await mkdtemp(join(tmpdir(), "aidlc-render-home-"));
-      browser = await chromium.launch({
-        timeout: 10_000,
-        env: {
-          PATH: process.env.PATH ?? "/usr/bin:/bin",
-          LANG: "ja_JP.UTF-8",
-          HOME: browserHome,
-          ...(process.env.TMPDIR ? { TMPDIR: process.env.TMPDIR } : {}),
-        },
-        chromiumSandbox: true,
-        ...(this.executablePath
-          ? { executablePath: this.executablePath }
-          : process.platform === "darwin"
-            ? {
-                executablePath:
-                  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-              }
-            : { channel: "chrome" }),
-      });
-      watchdog = setTimeout(() => {
-        void browser?.close();
-      }, 25_000);
-      const context = await browser.newContext({
+      home = await mkdtemp(join(tmpdir(), "aidlc-render-home-"));
+      return await runCaptureWorker(home, this.executablePath, {
         viewport,
-        deviceScaleFactor: 1,
-        javaScriptEnabled: false,
-        offline: true,
-        acceptDownloads: false,
-        serviceWorkers: "block",
-        permissions: [],
+        documentPath,
+        ...(overlay ? { overlay } : {}),
+        ...(scene ? { scene } : {}),
+        files: [...files].map(([path, file]) => ({
+          path,
+          mime: file.mime,
+          data: Buffer.from(file.bytes).toString("base64"),
+        })),
       });
-      await context.routeWebSocket("**/*", (socket) => socket.close());
-      await context.route("**/*", async (route) => {
-        const u = new URL(route.request().url());
-        let path: string;
-        try {
-          path = decodeURIComponent(u.pathname.slice(1));
-        } catch {
-          blocked++;
-          await route.abort();
-          return;
-        }
-        if (
-          route.request().isNavigationRequest() &&
-          path !== "__wrapper__" &&
-          path !== documentPath
-        ) {
-          blocked++;
-          await route.abort();
-          return;
-        }
-        if (u.origin !== ORIGIN || route.request().method() !== "GET") {
-          blocked++;
-          await route.abort();
-          return;
-        }
-        if (path === "__wrapper__") {
-          await route.fulfill({
-            contentType: "text/html",
-            headers: {
-              "Content-Security-Policy": `default-src 'none'; frame-src ${ORIGIN}; style-src 'unsafe-inline'; img-src data:; script-src 'none'; object-src 'none'; base-uri 'none'`,
-            },
-            body:
-              overlay ??
-              `<style>html,body{margin:0;overflow:hidden}iframe{border:0;width:100vw;height:100vh}</style><iframe sandbox="" src="${ORIGIN}/${documentPath.split("/").map(encodeURIComponent).join("/")}"></iframe>`,
-          });
-          return;
-        }
-        const file = files.get(path);
-        if (!file) {
-          blocked++;
-          await route.abort();
-          return;
-        }
-        await route.fulfill({
-          body: Buffer.from(file.bytes),
-          contentType: file.mime,
-          headers: {
-            "Content-Security-Policy": `sandbox; default-src 'none'; script-src 'none'; style-src 'unsafe-inline' ${ORIGIN}; img-src data: ${ORIGIN}; font-src ${ORIGIN}; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; base-uri 'none'`,
-          },
-        });
-      });
-      phase = "document";
-      const page = await context.newPage();
-      page.setDefaultTimeout(10_000);
-      await page.goto(`${ORIGIN}/__wrapper__`, {
-        waitUntil: "load",
-        timeout: 15_000,
-      });
-      if (scene) {
-        const frame = page.frames().find((f) => f !== page.mainFrame());
-        if (!frame) throw new ReaderError(400, "Dynamic frame unavailable");
-        await frame.evaluate(
-          ({ x, y }) => {
-            for (const element of document.querySelectorAll<HTMLElement>(
-              "[data-aidlc-scroll]",
-            )) {
-              try {
-                const [left, top] = JSON.parse(
-                  element.dataset.aidlcScroll ?? "[]",
-                );
-                if (
-                  [left, top].every(
-                    (n) => Number.isFinite(n) && n >= 0 && n <= 1000000,
-                  )
-                )
-                  element.scrollTo(left, top);
-              } catch {}
-            }
-            window.scrollTo(x, y);
-          },
-          { x: scene.scrollX, y: scene.scrollY },
-        );
-      }
-      phase = "screenshot";
-      const bytes = await page.screenshot({
-        type: "png",
-        animations: "disabled",
-        timeout: 10_000,
-      });
-      return { bytes: new Uint8Array(bytes), blocked };
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
+      const phase = error instanceof WorkerFailure ? error.phase : "worker";
       const reason =
-        /namespace|No usable sandbox|Operation not permitted/i.test(message)
-          ? "namespace-denied"
-          : /timeout/i.test(message)
-            ? "timeout"
-            : /closed/i.test(message)
-              ? "browser-closed"
-              : "render-error";
-      // No raw HTML, process args, paths or environment enter the public error.
+        error instanceof WorkerFailure ? error.reason : "render-error";
       console.error(`[isolated-capture] ${phase}:${reason}`);
       throw new CaptureError(phase, reason);
     } finally {
-      if (watchdog) clearTimeout(watchdog);
-      try {
-        await browser?.close();
-      } finally {
-        VisualSnapshots.capturing = false;
-        if (browserHome)
-          await rm(browserHome, { recursive: true, force: true });
-      }
+      VisualSnapshots.capturing = false;
+      if (home) await rm(home, { recursive: true, force: true });
     }
   }
   async capture(

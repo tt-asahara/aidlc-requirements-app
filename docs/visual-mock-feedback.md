@@ -21,7 +21,7 @@ DOMは80KB・5000要素、viewportは下記上限です。canvas・動画／音�
 
 「現在のHTMLを撮影」は従来どおりスクリプト無効の初期描画です。業務状態の選択は議論対象であり、自動再生はしません。未接続デモは固定初期画像を使い、操作後撮影・モデル送信は実行しない旨を明示します。
 
-撮影時は独立ブラウザー、空のsandbox iframe、offline context、service worker/WebSocket禁止を使用します。読み取り済みの同じ契約ディレクトリの静的資源だけを仮想originへメモリ配信します。外部HTTP、file URL、script、form、子frame、ローカルファイルの読取を許可しません。ブラウザーにはAWS認証環境を渡しません。通常の操作用iframeは従来の `sandbox="allow-scripts"` のままで、allow-same-originを付けません。
+撮影時は資格情報を渡さない短命Node 24ワーカーと独立ブラウザー、空のsandbox iframe、offline context、service worker/WebSocket禁止を使用します。読み取り済みの同じ契約ディレクトリの静的資源だけを仮想originへメモリ配信します。外部HTTP、file URL、script、form、子frame、ローカルファイルの読取を許可しません。ブラウザーにはAWS認証環境を渡しません。通常の操作用iframeは従来の `sandbox="allow-scripts"` のままで、allow-same-originを付けません。
 
 上限はPNG2MiB、viewport幅320–1600／高さ240–1200、DPR1、資源64件・計8MiB・列挙128件・深さ4です。画像はワークスペース外のprivate app data内、owner/projectごとに短期保存し、20分期限・同時撮影1件・project内16画像を上限とします。画像アップロードや任意URLを入力するAPIはありません。
 
@@ -48,3 +48,6 @@ CLI入力receiptには画像のhash・サイズ・寸法と本文hashを記録�
 幅1101px以上では「中央を広く表示」と左右それぞれの開閉を使えます。下書きとiframeは表示切替時に保持し、画像／反映案の下書きを作ると会話を開きます。狭幅と200%拡大では既存の領域タブを使います。成果物一覧は画面原本、要件・正式AC、全ラウンド統合設計書を分けます。HTML/CSS補助・内部ログを主一覧へ混在させません。許可待ちは次操作を表示しますが、許可後も送信は自動で行いません。
 
 操作後DOMの追加の限定実AI検証でも、元HTMLや本文にない操作後の画像内コードを最初のツール操作より前に読み取り、指定したCSS色1箇所だけを編集できました。同じDOM・viewportによる変更前後PNGの差分は境界線の1218ピクセルだけでした。表示PNGとCLI stdinの画像hash・表示本文のhashも一致しました。要件・AC・統合文書は編集せず外観変更の影響案だけを取得しています。モデルが述べたコントラストや「承認不要」という判断は検証・承認済みと扱いません。正式な変更と承認は引き続き既存手順で行います。
+
+
+描画機能にはPATH上のNode 24と既存Chromium/Chromeが必要です。DockerイメージはNode 24を既に含みます。通常のテキスト送信はBunの既存経路です。ワーカーは固定の内部モジュールだけを読み、ユーザーコードをNodeで実行しません。Chromeのローカル制御はloopbackと一時的なランダムpathだけに限定し、画像・文書のURLを制御接続に使用しません。Chromeはsandbox有効の既定状態で起動し、描画contextのJavaScript無効・offline・resource allowlistを維持します。ワーカーと所有Chromeの寿命を制限し、描画失敗後も撮影枠を解放します。
