@@ -117,5 +117,9 @@ export type {
   MockupsResponse,
 } from "./mockups.ts";
 export { extractOptions } from "./options.ts";
-export type { VisualSelection, VisualSnapshot } from "./visual.ts";
+export type {
+  DynamicScene,
+  VisualSelection,
+  VisualSnapshot,
+} from "./visual.ts";
 export { validVisualSelection, visualReferenceText } from "./visual.ts";

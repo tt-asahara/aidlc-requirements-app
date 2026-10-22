@@ -6,9 +6,10 @@ import type {
   Progress,
 } from "@aidlc/shared";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { api } from "../api/client.ts";
 import { FileView, LogicalDocuments } from "./ArtifactPane.tsx";
+import type { PreviewCapture } from "./dynamic-scene.ts";
 import { VisualCapture, type VisualDraft } from "./VisualCapture.tsx";
 
 export function MockupWorkspace({
@@ -38,6 +39,10 @@ export function MockupWorkspace({
   invalidateVisual: () => void;
   canDraft: boolean;
 }) {
+  const captureRef = useRef<PreviewCapture | null>(null);
+  const captureReady = useCallback((fn: PreviewCapture | null) => {
+    captureRef.current = fn;
+  }, []);
   const [viewed, setViewed] = useState("");
   const [visualMode, setVisualMode] = useState(false);
   const [stage, setStage] = useState<"rough-mockups" | "refined-mockups">(
@@ -235,6 +240,13 @@ export function MockupWorkspace({
                             user={user}
                             projectId={projectId}
                             canCapture={canCapture}
+                            captureState={() => {
+                              if (!captureRef.current)
+                                return Promise.reject(
+                                  new Error("プレビューがまだありません。"),
+                                );
+                              return captureRef.current();
+                            }}
                             mode={visualMode}
                             setMode={setVisualMode}
                             invalidate={invalidateVisual}
@@ -254,21 +266,19 @@ export function MockupWorkspace({
                             makeDraft={makeDraft}
                           />
                         )}
-                      {!visualMode || !isActive ? (
-                        contract.integrity === "matched" &&
-                        /\.html?$/i.test(mapping.asset) ? (
-                          <FileView
-                            key={`${path}/${contract.sha256}`}
-                            path={path}
-                            context={context}
-                          />
-                        ) : (
-                          <p>
-                            整合した HTML
-                            を表示できません。契約とアセットを確認してください。
-                          </p>
-                        )
-                      ) : null}
+                      {contract.integrity === "matched" &&
+                      /\.html?$/i.test(mapping.asset) ? (
+                        <FileView
+                          key={`${path}/${contract.sha256}`}
+                          path={path}
+                          context={{ ...context, captureReady }}
+                        />
+                      ) : (
+                        <p>
+                          整合した HTML
+                          を表示できません。契約とアセットを確認してください。
+                        </p>
+                      )}
                       <button
                         type="button"
                         className="primary"

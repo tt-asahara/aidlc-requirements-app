@@ -21,7 +21,7 @@ import {
   validateContext,
 } from "../reader/context.ts";
 import { artifactMime } from "../reader/mime.ts";
-import { readMockups } from "../reader/mockups.ts";
+import { hashBytes as previewHash, readMockups } from "../reader/mockups.ts";
 import { ReaderError, resolveInside } from "../reader/paths.ts";
 import {
   createPreviewTokens,
@@ -31,7 +31,9 @@ import {
 import { readProgress } from "../reader/progress.ts";
 import { scenarioProgress } from "../runner/scenario.ts";
 import { type Store, TurnAdmissionError } from "../store/types.ts";
+import { captureBridge } from "../visual/bridge.ts";
 import {
+  parseScene,
   parseViewport,
   parseVisualId,
   VisualSnapshots,
@@ -254,7 +256,7 @@ export function projectRoutes(deps: ApiDependencies) {
       typeof body !== "object" ||
       Array.isArray(body) ||
       Object.keys(body).some(
-        (k) => !["expectedContext", "viewport"].includes(k),
+        (k) => !["expectedContext", "viewport", "scene"].includes(k),
       )
     )
       throw new PromptError("Invalid capture request");
@@ -273,6 +275,7 @@ export function projectRoutes(deps: ApiDependencies) {
           project,
           expected,
           parseViewport(body.viewport),
+          parseScene(body.scene),
         ),
       },
       201,
@@ -636,8 +639,18 @@ export function projectRoutes(deps: ApiDependencies) {
       .join("/");
     const path = previewFile(claims, raw);
     const bytes = await readArtifact(project.workspaceDir, claims.space, path);
+    const channel = c.req.query("aidlcCapture");
+    if (channel && !/^[a-f0-9-]{36}$/.test(channel))
+      throw new PromptError("Invalid capture channel");
+    const output =
+      channel && /\.html?$/i.test(path)
+        ? new TextEncoder().encode(
+            new TextDecoder().decode(bytes) +
+              captureBridge(channel, previewHash(bytes)),
+          )
+        : bytes;
     return new Response(
-      c.req.method === "HEAD" ? null : new Uint8Array(bytes).buffer,
+      c.req.method === "HEAD" ? null : new Uint8Array(output).buffer,
       {
         headers: {
           ...previewHeaders(

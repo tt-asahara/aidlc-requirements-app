@@ -188,3 +188,51 @@ test("capture browser blocks network/file/script sources and binds supplementary
     symlinkExcluded: true,
   });
 });
+
+test("operation-state capture reads the opaque preview without widening its sandbox", async ({
+  page,
+}) => {
+  await create(page, "操作後DOM（合成・モデル未使用）");
+  await start(page);
+  await page.getByRole("button", { name: "2.5 refined", exact: true }).click();
+  const preview = page.frameLocator('iframe[title="HTML モックアップ"]');
+  await expect(preview.locator("body")).toBeVisible();
+  const frame = page.frames().find((f) => f.url().includes("/raw/"));
+  if (!frame) throw Error("No preview frame");
+  // Synthetic interactive content: the capture itself uses only the postMessage bridge.
+  await frame.evaluate(() => {
+    document.body.innerHTML += `<button id="dynamic-test" onclick="this.textContent='操作完了';document.querySelector('#dynamic-value').value='変更後'">操作する</button><input id="dynamic-value" value="初期値">`;
+  });
+  await preview.getByRole("button", { name: "操作する", exact: true }).click();
+  await page
+    .getByRole("button", { name: "画像で修正箇所を指定", exact: true })
+    .click();
+  const response = page.waitForResponse(
+    (r) =>
+      r.url().endsWith("/visual-snapshots") && r.request().method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "操作後の状態を撮影", exact: true })
+    .click();
+  const r = await response;
+  expect(r.status()).toBe(201);
+  const sent = r.request().postDataJSON();
+  expect(sent.scene.html).toContain('value="変更後"');
+  expect(sent.scene.html).toContain("操作完了");
+  expect(sent.scene.html).not.toContain("onclick=");
+  expect(sent.scene.html).not.toContain("<script");
+  expect((await r.json()).snapshot.rendering).toBe("sandbox-dom-state");
+  await expect(
+    page.locator('iframe[title="HTML モックアップ"]'),
+  ).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(
+    preview.getByRole("button", { name: "操作完了", exact: true }),
+  ).toBeVisible();
+  await frame.evaluate(() =>
+    document.body.append(document.createElement("canvas")),
+  );
+  await page
+    .getByRole("button", { name: "操作後の状態を撮影", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("対象外");
+});

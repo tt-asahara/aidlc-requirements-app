@@ -5,11 +5,18 @@ export type VisualSelection = {
   width: number;
   height: number;
 };
+export type DynamicScene = {
+  html: string;
+  sourceSha256: string;
+  scrollX: number;
+  scrollY: number;
+};
 export type VisualSnapshot = {
   id: string;
   createdAt: string;
   expiresAt: string;
-  rendering: "scripts-disabled-initial";
+  rendering: "scripts-disabled-initial" | "sandbox-dom-state";
+  state?: { sha256: string; scrollX: number; scrollY: number };
   path: string;
   viewport: { width: number; height: number; deviceScaleFactor: 1 };
   image: { sha256: string; bytes: number; mediaType: "image/png" };
@@ -46,7 +53,9 @@ export function visualReferenceText(snapshot: VisualSnapshot) {
     `契約SHA256: ${snapshot.context.reference?.contractSha256 ?? ""}`,
     `添付PNG SHA256: ${snapshot.image.sha256}`,
     `撮影: ${snapshot.createdAt} / viewport ${snapshot.viewport.width}×${snapshot.viewport.height} / DPR 1`,
-    "描画: スクリプト無効の初期HTML。操作中iframeや選択した業務状態を撮影したものではありません。",
+    snapshot.rendering === "sandbox-dom-state"
+      ? `描画: 操作後DOMの隔離再描画。DOM SHA256: ${snapshot.state?.sha256}。ブラウザー画素の直接撮影ではありません。`
+      : "描画: スクリプト無効の初期HTML。操作中iframeや選択した業務状態を撮影したものではありません。",
     s
       ? `指定1: x=${Math.round(s.x * snapshot.viewport.width)}, y=${Math.round(s.y * snapshot.viewport.height)}, 幅=${Math.round(s.width * snapshot.viewport.width)}, 高さ=${Math.round(s.height * snapshot.viewport.height)} px（添付画像基準）`
       : "",

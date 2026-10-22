@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+  DynamicScene,
   ExpectedContext,
   VisualSelection,
   VisualSnapshot,
@@ -62,6 +63,25 @@ export function parseViewport(value: unknown): VisualSnapshot["viewport"] {
     height: v.height as number,
     deviceScaleFactor: 1,
   };
+}
+export function parseScene(value: unknown): DynamicScene | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new PromptError("Invalid scene");
+  const v = value as Record<string, unknown>;
+  if (
+    Object.keys(v).length !== 4 ||
+    typeof v.html !== "string" ||
+    new TextEncoder().encode(v.html).length > 80000 ||
+    typeof v.sourceSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(v.sourceSha256) ||
+    ![v.scrollX, v.scrollY].every(
+      (n) =>
+        typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1000000,
+    )
+  )
+    throw new PromptError("Invalid scene");
+  return v as DynamicScene;
 }
 export function validatePng(bytes: Uint8Array, width: number, height: number) {
   const b = Buffer.from(bytes);
@@ -222,6 +242,7 @@ export class VisualSnapshots {
     files: Map<string, { bytes: Uint8Array; mime: string }>,
     documentPath: string,
     overlay?: string,
+    scene?: DynamicScene,
   ) {
     if (VisualSnapshots.capturing)
       throw new TurnAdmissionError(
@@ -321,6 +342,31 @@ export class VisualSnapshots {
         waitUntil: "load",
         timeout: 15_000,
       });
+      if (scene) {
+        const frame = page.frames().find((f) => f !== page.mainFrame());
+        if (!frame) throw new ReaderError(400, "Dynamic frame unavailable");
+        await frame.evaluate(
+          ({ x, y }) => {
+            for (const element of document.querySelectorAll<HTMLElement>(
+              "[data-aidlc-scroll]",
+            )) {
+              try {
+                const [left, top] = JSON.parse(
+                  element.dataset.aidlcScroll ?? "[]",
+                );
+                if (
+                  [left, top].every(
+                    (n) => Number.isFinite(n) && n >= 0 && n <= 1000000,
+                  )
+                )
+                  element.scrollTo(left, top);
+              } catch {}
+            }
+            window.scrollTo(x, y);
+          },
+          { x: scene.scrollX, y: scene.scrollY },
+        );
+      }
       const bytes = await page.screenshot({
         type: "png",
         animations: "disabled",
@@ -343,6 +389,7 @@ export class VisualSnapshots {
     project: Project,
     expected: ExpectedContext,
     viewport: VisualSnapshot["viewport"],
+    scene?: DynamicScene,
   ) {
     if (!expected.reference) throw new PromptError("Reference required");
     await validateContext(store, project, expected);
@@ -399,8 +446,17 @@ export class VisualSnapshots {
       }
     };
     await visit(dir, 0);
-    if (!files.has(path)) throw new ReaderError(404, "HTML not readable");
-    const rendered = await this.render(viewport, files, path);
+    const original = files.get(path);
+    if (!original) throw new ReaderError(404, "HTML not readable");
+    if (scene) {
+      if (hashBytes(original.bytes) !== scene.sourceSha256) throw stale();
+      // DOM is untrusted. CSP and disabled JS prevent its scripts/URLs from executing.
+      files.set(path, {
+        bytes: new TextEncoder().encode(scene.html),
+        mime: "text/html",
+      });
+    }
+    const rendered = await this.render(viewport, files, path, undefined, scene);
     await validateContext(store, project, expected);
     for (const resource of resources)
       if (
@@ -418,7 +474,16 @@ export class VisualSnapshots {
       {
         createdAt: new Date(this.now()).toISOString(),
         expiresAt: new Date(this.now() + TTL).toISOString(),
-        rendering: "scripts-disabled-initial",
+        rendering: scene ? "sandbox-dom-state" : "scripts-disabled-initial",
+        ...(scene
+          ? {
+              state: {
+                sha256: hashBytes(new TextEncoder().encode(scene.html)),
+                scrollX: scene.scrollX,
+                scrollY: scene.scrollY,
+              },
+            }
+          : {}),
         path,
         viewport,
         context: expected,

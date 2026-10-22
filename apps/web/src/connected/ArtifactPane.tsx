@@ -10,12 +10,14 @@ import {
   loadArtifact,
 } from "../api/artifacts.ts";
 import { ApiError, api } from "../api/client.ts";
+import { type PreviewCapture, requestScene } from "./dynamic-scene.ts";
 
 type Context = {
   user: string;
   projectId: string;
   space: string;
   open: (path: string) => void;
+  captureReady?: (capture: PreviewCapture | null) => void;
 };
 export function ArtifactMarkdown({
   text,
@@ -236,6 +238,8 @@ function HtmlPreview({
   context: Context;
   source: string;
 }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [channel] = useState(() => crypto.randomUUID());
   const dir = path.split("/").slice(0, -1).join("/");
   const token = useQuery({
     queryKey: ["preview", context.user, context.projectId, context.space, path],
@@ -251,6 +255,15 @@ function HtmlPreview({
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+  const ready = context.captureReady;
+  useEffect(() => {
+    ready?.(() => {
+      if (!frame.current)
+        return Promise.reject(new Error("プレビューがありません。"));
+      return requestScene(frame.current, channel);
+    });
+    return () => ready?.(null);
+  }, [ready, channel]);
   if (!dir)
     return (
       <>
@@ -274,10 +287,11 @@ function HtmlPreview({
         <p role="alert">{token.error.message}</p>
       ) : token.data ? (
         <iframe
+          ref={frame}
           title="HTML モックアップ"
           sandbox="allow-scripts"
           referrerPolicy="no-referrer"
-          src={`${token.data.basePath}${path.split("/").map(encodeURIComponent).join("/")}`}
+          src={`${token.data.basePath}${path.split("/").map(encodeURIComponent).join("/")}${ready ? `?aidlcCapture=${channel}` : ""}`}
         />
       ) : (
         <p>プレビューを準備中…</p>

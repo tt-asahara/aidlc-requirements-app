@@ -11,6 +11,7 @@ import { executionContext } from "../src/reader/context.ts";
 import { hashBytes, readMockups } from "../src/reader/mockups.ts";
 import { SqliteStore } from "../src/store/sqlite.ts";
 import {
+  parseScene,
   parseViewport,
   VisualSnapshots,
   validatePng,
@@ -339,4 +340,40 @@ test("symlink resources cannot enter snapshots and the per-project file count is
   expect(image.resources.some((r) => r.path.endsWith("leak.css"))).toBe(false);
   for (let n = 1; n < 16; n++) await f.capture();
   await expect(f.capture()).rejects.toThrow("上限");
+});
+
+test("dynamic capture binds original bytes and keeps DOM hash separate", async () => {
+  const s = await setup();
+  const scene = {
+    html: "<html><body><input value='操作後'></body></html>",
+    sourceSha256: s.context.reference?.assets[0]?.sha256 ?? "",
+    scrollX: 0,
+    scrollY: 120,
+  };
+  expect(parseScene(scene)).toEqual(scene);
+  expect(() => parseScene({ ...scene, url: "http://localhost" })).toThrow();
+  expect(() => parseScene({ ...scene, scrollY: Infinity })).toThrow();
+  expect(() => parseScene({ ...scene, html: "x".repeat(80001) })).toThrow();
+  const snap = await s.visuals.capture(
+    s.store,
+    s.project,
+    s.context,
+    { width: 900, height: 860, deviceScaleFactor: 1 },
+    scene,
+  );
+  expect(snap.rendering).toBe("sandbox-dom-state");
+  expect(snap.state?.sha256).toBe(
+    hashBytes(new TextEncoder().encode(scene.html)),
+  );
+  expect(snap.resources[0]?.sha256).not.toBe(snap.state?.sha256);
+  await expect(
+    s.visuals.capture(
+      s.store,
+      s.project,
+      s.context,
+      { width: 900, height: 860, deviceScaleFactor: 1 },
+      { ...scene, sourceSha256: "f".repeat(64) },
+    ),
+  ).rejects.toThrow();
+  expect(s.calls()).toBe(0);
 });

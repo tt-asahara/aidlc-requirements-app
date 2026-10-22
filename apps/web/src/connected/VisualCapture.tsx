@@ -7,6 +7,7 @@ import { visualReferenceText } from "@aidlc/shared";
 import { useEffect, useRef, useState } from "react";
 import { artifactResponse } from "../api/artifacts.ts";
 import { api } from "../api/client.ts";
+import type { PreviewCapture } from "./dynamic-scene.ts";
 
 export type VisualDraft = {
   snapshot: VisualSnapshot;
@@ -89,7 +90,10 @@ export function VisualDraftPreview({
         </p>
       </details>
       <p>
-        撮影はスクリプト無効の初期HTMLです。送信する本文は下の入力欄の全文です。
+        {draft.snapshot.rendering === "sandbox-dom-state"
+          ? "操作後DOMの隔離再描画です。"
+          : "スクリプト無効の初期HTMLです。"}
+        送信する本文は下の入力欄の全文です。
       </p>
       {stale && <p>新しい画像で再指定してください。本文は保持しています。</p>}
       <button type="button" onClick={clear}>
@@ -108,6 +112,7 @@ export function VisualCapture({
   setMode,
   makeDraft,
   invalidate,
+  captureState,
 }: {
   user: string;
   projectId: string;
@@ -121,6 +126,7 @@ export function VisualCapture({
     visual: VisualDraft,
   ) => void;
   invalidate: () => void;
+  captureState: PreviewCapture;
 }) {
   const [viewport, setViewport] = useState({ width: 1000, height: 700 });
   const [current, setCurrent] = useState<{
@@ -153,17 +159,22 @@ export function VisualCapture({
     !!current &&
     JSON.stringify(current.snapshot.context) === sourceKey &&
     visualContextMatches(current.snapshot, expected);
-  const capture = async () => {
+  const capture = async (dynamic = false) => {
     if (working || !canCapture) return;
     const seq = ++revision.current;
     setWorking(true);
     setError("");
     try {
+      const state = dynamic ? await captureState() : null;
       const result = await api<{ snapshot: VisualSnapshot }>(
         user,
         `/api/projects/${projectId}/visual-snapshots`,
         {
-          body: { expectedContext: expected, viewport },
+          body: {
+            expectedContext: expected,
+            viewport: state?.viewport ?? viewport,
+            ...(state ? { scene: state.scene } : {}),
+          },
           signal: AbortSignal.timeout(35_000),
         },
       );
@@ -230,8 +241,16 @@ export function VisualCapture({
       {mode && (
         <>
           <p>
-            実HTMLを隔離撮影します（モデル呼び出しなし）。スクリプト無効の初期描画です。操作中のiframe・スクロール位置・議論対象の業務状態は再現しません。動的DOMだけの内容は写りません。
+            モックを操作した後「操作後の状態を撮影」を押してください。現在のDOM・入力値・スクロールを隔離して再描画します（モデル呼び出しなし）。ブラウザー画素の直接撮影ではありません。canvas・動画・Shadow
+            DOM・入れ子フレーム・秘密入力は対象外です。表示されたPNGを確認して指定してください。
           </p>
+          <button
+            type="button"
+            disabled={working || !canCapture}
+            onClick={() => void capture(true)}
+          >
+            操作後の状態を撮影
+          </button>
           <div className="visual-capture-controls">
             <label>
               撮影幅
@@ -353,7 +372,7 @@ export function VisualCapture({
               >
                 <img
                   src={current.dataUrl}
-                  alt="実HTMLの初期描画から撮影した画像"
+                  alt="実モックから隔離再描画した撮影画像"
                   width={current.snapshot.viewport.width}
                   height={current.snapshot.viewport.height}
                   draggable={false}
