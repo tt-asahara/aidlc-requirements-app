@@ -195,7 +195,6 @@ export function MockupWorkspace({
             ) : (
               contract && (
                 <>
-                  <ContractStatus contract={contract} />
                   {!!mapping && (
                     <>
                       <label>
@@ -233,7 +232,10 @@ export function MockupWorkspace({
                             ))}
                         </select>
                       </label>
-                      <p className="mapping-check">{mapping.check}</p>
+                      <details className="mapping-check">
+                        <summary>選択したACの確認内容</summary>
+                        <p>{mapping.check}</p>
+                      </details>
                       <p className="muted">
                         状態は議論対象です。モック内を操作して確認してください。状態を自動で再現してはいません。
                       </p>
@@ -333,6 +335,7 @@ export function MockupWorkspace({
                       )}
                     </>
                   )}
+                  <ContractStatus contract={contract} />
                   <p className="muted">
                     HTML
                     の変更だけでは要件の変更になりません。正式な対話とゲートを通し、refined

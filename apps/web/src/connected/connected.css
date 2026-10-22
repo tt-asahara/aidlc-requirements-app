@@ -1023,3 +1023,20 @@
     display: none;
   }
 }
+.mockup-main {
+  padding: 16px;
+}
+.mockup-main h2 {
+  font-size: 18px;
+  margin: 10px 0;
+}
+.mockup-main .mapping-check {
+  margin: 4px 0;
+  font-size: 12px;
+}
+.mockup-main .mapping-check summary {
+  padding: 4px 0;
+}
+.mockup-main > .contract-status {
+  margin: 8px 0;
+}

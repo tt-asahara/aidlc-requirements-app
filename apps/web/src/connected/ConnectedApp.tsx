@@ -815,7 +815,9 @@ function ProjectScreen({
           </button>
         ))}
       </nav>
-      {permissions.rows.some((r) => r.status === "pending") && (
+      {permissions.rows.some(
+        (r) => r.status === "pending" && r.turnId === turns.at(-1)?.id,
+      ) && (
         <p className="next-action" role="status">
           次の操作: ツール実行の許可要求があります。
           <button
