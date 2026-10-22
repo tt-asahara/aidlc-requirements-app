@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { APP_ROOT, readConfig } from "../apps/server/src/config.ts";
 import { createApp } from "../apps/server/src/http/app.ts";
 import { createRuntime } from "../apps/server/src/runtime.ts";
+import { captureAwareFetch } from "../apps/server/src/visual/http.ts";
 
 const dataDir = await mkdtemp(join(tmpdir(), "aidlc-playwright-"));
 const config = readConfig(
@@ -23,7 +24,7 @@ const app = createApp(APP_ROOT, runtime);
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: config.port,
-  fetch: app.fetch,
+  fetch: captureAwareFetch(app),
 });
 console.info(`Model-free E2E API: ${server.url}`);
 let closing = false;

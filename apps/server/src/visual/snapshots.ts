@@ -257,6 +257,7 @@ export class VisualSnapshots {
     try {
       browserHome = await mkdtemp(join(tmpdir(), "aidlc-render-home-"));
       browser = await chromium.launch({
+        timeout: 10_000,
         env: {
           PATH: process.env.PATH ?? "/usr/bin:/bin",
           LANG: "ja_JP.UTF-8",

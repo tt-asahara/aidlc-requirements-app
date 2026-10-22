@@ -1,6 +1,7 @@
 import { APP_ROOT, readConfig } from "./config";
 import { createApp } from "./http/app";
 import { createRuntime } from "./runtime.ts";
+import { captureAwareFetch } from "./visual/http.ts";
 import { requireAidlcReady } from "./workspace/aidlc";
 
 const config = readConfig(process.env);
@@ -11,7 +12,7 @@ const app = createApp(APP_ROOT, runtime);
 const server = Bun.serve({
   hostname: config.bindAddress,
   port: config.port,
-  fetch: app.fetch,
+  fetch: captureAwareFetch(app),
 });
 
 console.info(`API: ${server.url}`);
