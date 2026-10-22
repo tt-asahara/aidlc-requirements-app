@@ -152,7 +152,20 @@ test("real server capture uses HTML bytes, attaches the marked PNG explicitly, a
   );
   await expect(preview).toHaveCount(0);
   expect(turns).toBe(before + 1);
-  expect(snapshotCalls).toBe(4);
+  const recapture = page.getByRole("button", {
+    name: "現在の版を再撮影",
+    exact: true,
+  });
+  await expect(recapture).toBeEnabled();
+  await recapture.click();
+  const comparison = page.getByText(/前回の撮影と比較/, { exact: false });
+  await expect(comparison).toBeVisible();
+  await comparison.click();
+  await expect(
+    page.getByRole("img", { name: "比較用の前回撮影画像", exact: true }),
+  ).toBeVisible();
+  expect(turns).toBe(before + 1);
+  expect(snapshotCalls).toBe(5);
 });
 
 test("capture browser blocks network/file/script sources and binds supplementary CSS bytes", async () => {
