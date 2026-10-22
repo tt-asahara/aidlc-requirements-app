@@ -31,6 +31,16 @@ const TTL = 20 * 60_000;
 const MAX_PNG = 2 * 1024 * 1024;
 const idPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export class CaptureError extends Error {
+  constructor(
+    public readonly phase: string,
+    public readonly reason: string,
+  ) {
+    super(
+      `隔離撮影を完了できません（${phase}:${reason}）。sandboxを無効化せず、ブラウザー実行環境を確認してください。下書きは保持されます。`,
+    );
+  }
+}
 type Stored = VisualSnapshot & { ownerId: string; projectId: string };
 export type RunnerImage = {
   mediaType: "image/png";
@@ -254,6 +264,7 @@ export class VisualSnapshots {
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     let blocked = 0;
     let browserHome: string | undefined;
+    let phase = "launch";
     try {
       browserHome = await mkdtemp(join(tmpdir(), "aidlc-render-home-"));
       browser = await chromium.launch({
@@ -337,6 +348,7 @@ export class VisualSnapshots {
           },
         });
       });
+      phase = "document";
       const page = await context.newPage();
       page.setDefaultTimeout(10_000);
       await page.goto(`${ORIGIN}/__wrapper__`, {
@@ -368,12 +380,26 @@ export class VisualSnapshots {
           { x: scene.scrollX, y: scene.scrollY },
         );
       }
+      phase = "screenshot";
       const bytes = await page.screenshot({
         type: "png",
         animations: "disabled",
         timeout: 10_000,
       });
       return { bytes: new Uint8Array(bytes), blocked };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      const reason =
+        /namespace|No usable sandbox|Operation not permitted/i.test(message)
+          ? "namespace-denied"
+          : /timeout/i.test(message)
+            ? "timeout"
+            : /closed/i.test(message)
+              ? "browser-closed"
+              : "render-error";
+      // No raw HTML, process args, paths or environment enter the public error.
+      console.error(`[isolated-capture] ${phase}:${reason}`);
+      throw new CaptureError(phase, reason);
     } finally {
       if (watchdog) clearTimeout(watchdog);
       try {

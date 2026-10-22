@@ -465,3 +465,25 @@ test("pre-CLI related-document creation is stale and costs zero without invoking
   expect(f.store.getTurn(turn.id)?.turnCostUsd).toBe(0);
   expect(f.store.projectCosts("p1").reservedUsd).toBe(0);
 });
+
+test("unavailable sandbox renderer fails without exposing executable paths or invoking a model", async () => {
+  const f = await setup(),
+    service = new VisualSnapshots(
+      f.dataDir,
+      "/missing/private-executable-name",
+    );
+  let message = "";
+  try {
+    await service.capture(f.store, f.project, f.context, {
+      width: 900,
+      height: 860,
+      deviceScaleFactor: 1,
+    });
+  } catch (e) {
+    message = e instanceof Error ? e.message : "";
+  }
+  expect(message).toContain("隔離撮影を完了できません");
+  expect(message).not.toContain("private-executable-name");
+  expect(f.calls()).toBe(0);
+  expect((await f.capture()).image.mediaType).toBe("image/png");
+});

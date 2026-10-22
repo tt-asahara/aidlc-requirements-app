@@ -34,6 +34,7 @@ import { scenarioProgress } from "../runner/scenario.ts";
 import { type Store, TurnAdmissionError } from "../store/types.ts";
 import { captureBridge } from "../visual/bridge.ts";
 import {
+  CaptureError,
   parseScene,
   parseViewport,
   parseVisualId,
@@ -69,6 +70,8 @@ export function projectRoutes(deps: ApiDependencies) {
     deps.visuals ??
     new VisualSnapshots(config.dataDir, config.browserExecutable);
   app.onError((error, c) => {
+    if (error instanceof CaptureError)
+      return c.json({ error: error.message, code: "CAPTURE_UNAVAILABLE" }, 503);
     if (error instanceof ReaderError || error instanceof TurnAdmissionError)
       return c.json(
         {

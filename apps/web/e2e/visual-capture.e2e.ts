@@ -29,9 +29,19 @@ test("real server capture uses HTML bytes, attaches the marked PNG explicitly, a
   await page
     .getByRole("button", { name: "画像で修正箇所を指定", exact: true })
     .click();
+  const captureResponse = () =>
+    page.waitForResponse(
+      (r) =>
+        r.url().endsWith("/visual-snapshots") &&
+        r.request().method() === "POST",
+      { timeout: 35000 },
+    );
+  const firstCapture = captureResponse();
   await page
     .getByRole("button", { name: "現在のHTMLを撮影", exact: true })
     .click();
+  const firstCaptured = await firstCapture;
+  expect(firstCaptured.status(), await firstCaptured.text()).toBe(201);
   const image = page.getByRole("button", {
     name: "撮影画像の修正箇所を指定",
     exact: true,
@@ -130,9 +140,12 @@ test("real server capture uses HTML bytes, attaches the marked PNG explicitly, a
   await draft.fill("");
   // Reattach a fresh selection; only explicit Send creates a model-free fixture turn.
 
+  const freshCapture = captureResponse();
   await page
     .getByRole("button", { name: "現在のHTMLを撮影", exact: true })
     .click();
+  const freshCaptured = await freshCapture;
+  expect(freshCaptured.status(), await freshCaptured.text()).toBe(201);
   await expect(image).toBeVisible({ timeout: 35_000 });
   await image.click({ position: { x: 120, y: 100 } });
   await page

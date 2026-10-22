@@ -23,6 +23,12 @@ jobs:
       - run: bun run build
       - run: bunx playwright install --with-deps chromium
       - run: bun run e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks-browser-failure
+          path: test-results
+          retention-days: 1
 
   docker:
     runs-on: ubuntu-latest
@@ -37,5 +43,11 @@ jobs:
       - run: docker compose -p aidlc-ci build
       - run: docker compose -p aidlc-ci up -d --wait --wait-timeout 60
       - run: bun run e2e:docker
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-browser-failure
+          path: test-results/docker
+          retention-days: 1
       - if: always()
         run: docker compose -p aidlc-ci logs --tail=40 && docker compose -p aidlc-ci down
