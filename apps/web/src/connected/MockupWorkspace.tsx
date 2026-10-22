@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client.ts";
 import { FileView, LogicalDocuments } from "./ArtifactPane.tsx";
+import { VisualCapture, type VisualDraft } from "./VisualCapture.tsx";
 
 export function MockupWorkspace({
   user,
@@ -19,6 +20,8 @@ export function MockupWorkspace({
   open,
   makeDraft,
   canDraft,
+  canCapture,
+  invalidateVisual,
 }: {
   user: string;
   projectId: string;
@@ -26,10 +29,17 @@ export function MockupWorkspace({
   execution: ExpectedContext | undefined;
   selectedFile: string;
   open: (path: string) => void;
-  makeDraft: (text: string, context: ExpectedContext) => void;
+  makeDraft: (
+    text: string,
+    context: ExpectedContext,
+    visual?: VisualDraft,
+  ) => void;
+  canCapture: boolean;
+  invalidateVisual: () => void;
   canDraft: boolean;
 }) {
   const [viewed, setViewed] = useState("");
+  const [visualMode, setVisualMode] = useState(false);
   const [stage, setStage] = useState<"rough-mockups" | "refined-mockups">(
     "rough-mockups",
   );
@@ -105,6 +115,7 @@ export function MockupWorkspace({
             <select
               value={intent}
               onChange={(e) => {
+                invalidateVisual();
                 setViewed(e.target.value);
                 setSelected("");
               }}
@@ -153,6 +164,7 @@ export function MockupWorkspace({
                   key={s}
                   aria-pressed={stage === s}
                   onClick={() => {
+                    invalidateVisual();
                     setStage(s);
                     setSelected("");
                   }}
@@ -180,6 +192,7 @@ export function MockupWorkspace({
                         <select
                           value={mapping.screen}
                           onChange={(e) => {
+                            invalidateVisual();
                             const m = contract.mappings.find(
                               (m) => m.screen === e.target.value,
                             );
@@ -195,7 +208,10 @@ export function MockupWorkspace({
                         議論する状態・AC{" "}
                         <select
                           value={key(mapping)}
-                          onChange={(e) => setSelected(e.target.value)}
+                          onChange={(e) => {
+                            invalidateVisual();
+                            setSelected(e.target.value);
+                          }}
                         >
                           {contract.mappings
                             .filter((m) => m.screen === mapping.screen)
@@ -210,19 +226,49 @@ export function MockupWorkspace({
                       <p className="muted">
                         状態は議論対象です。モック内を操作して確認してください。状態を自動で再現してはいません。
                       </p>
-                      {contract.integrity === "matched" &&
-                      /\.html?$/i.test(mapping.asset) ? (
-                        <FileView
-                          key={`${path}/${contract.sha256}`}
-                          path={path}
-                          context={context}
-                        />
-                      ) : (
-                        <p>
-                          整合した HTML
-                          を表示できません。契約とアセットを確認してください。
-                        </p>
-                      )}
+                      {contract.sha256 &&
+                        execution &&
+                        isActive &&
+                        contract.integrity === "matched" &&
+                        /\.html?$/i.test(mapping.asset) && (
+                          <VisualCapture
+                            user={user}
+                            projectId={projectId}
+                            canCapture={canCapture}
+                            mode={visualMode}
+                            setMode={setVisualMode}
+                            invalidate={invalidateVisual}
+                            expected={{
+                              ...execution,
+                              reference: {
+                                intent,
+                                stage,
+                                contractSha256: contract.sha256,
+                                assets: contract.assets.map((a) => ({
+                                  path: a.path,
+                                  sha256: a.actualSha256 ?? "",
+                                })),
+                                mapping,
+                              },
+                            }}
+                            makeDraft={makeDraft}
+                          />
+                        )}
+                      {!visualMode || !isActive ? (
+                        contract.integrity === "matched" &&
+                        /\.html?$/i.test(mapping.asset) ? (
+                          <FileView
+                            key={`${path}/${contract.sha256}`}
+                            path={path}
+                            context={context}
+                          />
+                        ) : (
+                          <p>
+                            整合した HTML
+                            を表示できません。契約とアセットを確認してください。
+                          </p>
+                        )
+                      ) : null}
                       <button
                         type="button"
                         className="primary"

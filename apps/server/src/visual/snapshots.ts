@@ -1,4 +1,5 @@
-import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   ExpectedContext,
@@ -231,8 +232,16 @@ export class VisualSnapshots {
     let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     let blocked = 0;
+    let browserHome: string | undefined;
     try {
+      browserHome = await mkdtemp(join(tmpdir(), "aidlc-render-home-"));
       browser = await chromium.launch({
+        env: {
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          LANG: "ja_JP.UTF-8",
+          HOME: browserHome,
+          ...(process.env.TMPDIR ? { TMPDIR: process.env.TMPDIR } : {}),
+        },
         chromiumSandbox: true,
         ...(this.executablePath
           ? { executablePath: this.executablePath }
@@ -258,7 +267,23 @@ export class VisualSnapshots {
       await context.routeWebSocket("**/*", (socket) => socket.close());
       await context.route("**/*", async (route) => {
         const u = new URL(route.request().url());
-        const path = decodeURIComponent(u.pathname.slice(1));
+        let path: string;
+        try {
+          path = decodeURIComponent(u.pathname.slice(1));
+        } catch {
+          blocked++;
+          await route.abort();
+          return;
+        }
+        if (
+          route.request().isNavigationRequest() &&
+          path !== "__wrapper__" &&
+          path !== documentPath
+        ) {
+          blocked++;
+          await route.abort();
+          return;
+        }
         if (u.origin !== ORIGIN || route.request().method() !== "GET") {
           blocked++;
           await route.abort();
@@ -304,8 +329,13 @@ export class VisualSnapshots {
       return { bytes: new Uint8Array(bytes), blocked };
     } finally {
       if (watchdog) clearTimeout(watchdog);
-      await browser?.close();
-      VisualSnapshots.capturing = false;
+      try {
+        await browser?.close();
+      } finally {
+        VisualSnapshots.capturing = false;
+        if (browserHome)
+          await rm(browserHome, { recursive: true, force: true });
+      }
     }
   }
   async capture(

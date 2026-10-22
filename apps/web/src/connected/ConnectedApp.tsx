@@ -13,7 +13,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, subscribeEvents } from "../api/client.ts";
+import { ApiError, api, subscribeEvents } from "../api/client.ts";
 import { ArtifactMarkdown } from "./ArtifactPane.tsx";
 import { MockupWorkspace } from "./MockupWorkspace.tsx";
 import {
@@ -26,6 +26,11 @@ import {
   permissionDraft,
   revokeDraft,
 } from "./permission-draft.ts";
+import {
+  type VisualDraft,
+  VisualDraftPreview,
+  visualContextMatches,
+} from "./VisualCapture.tsx";
 import "./connected.css";
 
 const money = (n: number | null) =>
@@ -194,6 +199,31 @@ export function ConnectedApp() {
     ? undefined
     : projects.data?.projects.find((project) => project.id === selected);
   const draftKey = `${user}/${selected}`;
+  const visualIdentity = useRef({ user, selected });
+  useEffect(() => {
+    if (
+      visualIdentity.current.user === user &&
+      visualIdentity.current.selected === selected
+    )
+      return;
+    visualIdentity.current = { user, selected };
+    setDrafts((old) => {
+      let changed = false;
+      const next = Object.fromEntries(
+        Object.entries(old).map(([key, value]) => {
+          if (value.visual && !value.visual.stale) {
+            changed = true;
+            return [
+              key,
+              { ...value, visual: { ...value.visual, stale: true } },
+            ];
+          }
+          return [key, value];
+        }),
+      );
+      return changed ? next : old;
+    });
+  }, [user, selected]);
   const createProject = async (name: string) => {
     if (createLock.current) return;
     createLock.current = true;
@@ -332,8 +362,28 @@ export function ConnectedApp() {
           setDraft={(value) =>
             setDrafts((old) => ({
               ...old,
-              [draftKey]: { text: value, permissionRequestId: null },
+              [draftKey]: {
+                text: value,
+                permissionRequestId: null,
+                ...(value && old[draftKey]?.visual
+                  ? { visual: old[draftKey].visual }
+                  : {}),
+              },
             }))
+          }
+          visualDraft={drafts[draftKey]?.visual}
+          setVisualDraft={(visual) =>
+            setDrafts((old) => {
+              const previous = old[draftKey] ?? {
+                text: "",
+                permissionRequestId: null,
+              };
+              const { visual: _removed, ...rest } = previous;
+              return {
+                ...old,
+                [draftKey]: { ...rest, ...(visual ? { visual } : {}) },
+              };
+            })
           }
           insertPermissionDraft={(id, replace, context) =>
             setDrafts((old) => {
@@ -388,6 +438,8 @@ function ProjectScreen({
   setDraft,
   insertPermissionDraft,
   revokePermissionDraft,
+  visualDraft,
+  setVisualDraft,
   locks,
   draftContexts,
   pending,
@@ -405,6 +457,8 @@ function ProjectScreen({
     context?: ExpectedContext,
   ) => void;
   revokePermissionDraft: (id: string) => void;
+  visualDraft: VisualDraft | undefined;
+  setVisualDraft: (value: VisualDraft | undefined) => void;
   locks: Map<string, string>;
   draftContexts: Map<string, ExpectedContext>;
   pending: string | null;
@@ -563,7 +617,16 @@ function ProjectScreen({
   useEffect(() => {
     if (!draft) draftContexts.delete(lockKey);
   }, [draft, draftContexts, lockKey]);
+  const visualStale =
+    !!visualDraft &&
+    (visualDraft.stale ||
+      !visualContextMatches(visualDraft.snapshot, execution.data));
+  const invalidateVisual = () => {
+    if (visualDraft && !visualDraft.stale)
+      setVisualDraft({ ...visualDraft, stale: true });
+  };
   const openFile = (path: string) => {
+    if (path) invalidateVisual();
     setSelectedFile(path);
     setRegion("mockup");
   };
@@ -571,6 +634,13 @@ function ProjectScreen({
   latestDraft.current = draft;
   const send = async (input: SendTurn, clearDraft = false) => {
     if (!canSend || locks.has(lockKey)) return;
+    if (visualDraft && (input.origin !== "typed" || visualStale)) {
+      setError(
+        "画像の対象を確認してください。本文を保持しています。画像の再指定または解除が必要です。",
+      );
+      setRegion("conversation");
+      return;
+    }
     if (input.origin === "typed" && !draftContexts.has(lockKey)) {
       setError(
         "下書きの対象を確認できません。本文を保持して、対象を選び直してください。",
@@ -589,6 +659,9 @@ function ProjectScreen({
         {
           body: {
             ...input,
+            ...(input.origin === "typed" && visualDraft
+              ? { visualAttachmentId: visualDraft.snapshot.id }
+              : {}),
             ...(input.origin === "typed" &&
             draftContexts.get(lockKey)?.reference
               ? { purpose: "mockup_revision" }
@@ -610,6 +683,7 @@ function ProjectScreen({
     } catch (err) {
       locks.delete(lockKey);
       setSubmitted(null);
+      if (err instanceof ApiError && err.status === 409) invalidateVisual();
       setError(err instanceof Error ? err.message : "送信に失敗しました");
       refresh();
     } finally {
@@ -969,6 +1043,18 @@ function ProjectScreen({
             }}
           >
             <label htmlFor="reply-input">返答</label>
+            {visualDraft && (
+              <VisualDraftPreview
+                draft={visualDraft}
+                stale={visualStale}
+                clear={() => {
+                  setVisualDraft(undefined);
+                  setError(
+                    "画像を解除しました。本文に残る参照情報も確認してください。",
+                  );
+                }}
+              />
+            )}
             {draft && (
               <small>
                 下書きの送信対象:{" "}
@@ -1001,7 +1087,12 @@ function ProjectScreen({
               <button
                 type="submit"
                 className="primary"
-                disabled={!canSend || !draft.trim() || draft.length > 20_000}
+                disabled={
+                  !canSend ||
+                  visualStale ||
+                  !draft.trim() ||
+                  draft.length > 20_000
+                }
               >
                 送信
               </button>
@@ -1016,7 +1107,12 @@ function ProjectScreen({
           selectedFile={selectedFile}
           open={openFile}
           canDraft={canSend && !draft.trim()}
-          makeDraft={(text, context) => {
+          canCapture={canSend}
+          invalidateVisual={invalidateVisual}
+          makeDraft={(text, context, visual) => {
+            setVisualDraft(visual);
+            if (visual && draft.trim())
+              text += `\n\n以前の下書き（必要な本文を残し、参照情報を確認してください）：\n${draft}`;
             draftContexts.set(lockKey, structuredClone(context));
             setDraft(text);
             setRegion("conversation");

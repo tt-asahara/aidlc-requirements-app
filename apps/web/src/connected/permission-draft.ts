@@ -1,6 +1,10 @@
 export const PERMISSION_CONTINUE_DRAFT =
   "承認したコマンドを実行して続けてください";
-export type Draft = { text: string; permissionRequestId: string | null };
+export type Draft = {
+  text: string;
+  permissionRequestId: string | null;
+  visual?: import("./VisualCapture.tsx").VisualDraft;
+};
 export function permissionDraft(
   previous: Draft | undefined,
   requestId: string,
