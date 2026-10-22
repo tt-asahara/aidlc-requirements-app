@@ -1905,3 +1905,118 @@ a {
   top: 0;
   z-index: 30;
 }
+
+/* The disconnected demo uses the same conversation / canvas / artifact order as V2. */
+.workspace.demo-v2-workspace {
+  grid-template-columns: min(var(--left-width), 30vw) 7px minmax(360px, 1fr) 7px min(
+      var(--right-width),
+      24vw
+    );
+}
+.demo-v2-workspace .conversation,
+.demo-v2-workspace .demo-canvas,
+.demo-v2-workspace .artifacts {
+  min-width: 0;
+  min-height: 0;
+}
+.demo-project-controls {
+  flex-shrink: 0;
+  max-height: 35%;
+  overflow: auto;
+  border-bottom: 1px solid var(--border);
+  background: #f6f7f3;
+}
+.demo-project-controls > summary {
+  padding: 13px 18px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+.demo-v2-workspace .navigation {
+  padding: 16px 20px;
+  overflow: visible;
+}
+.demo-v2-workspace .navigation .project-heading {
+  margin-bottom: 20px;
+}
+.demo-canvas {
+  display: flex;
+  flex-direction: column;
+  background: #f8faf6;
+  overflow: hidden;
+}
+.demo-canvas .viewer-panel {
+  min-height: 0;
+}
+.demo-canvas .document {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.demo-canvas .document p,
+.demo-canvas .document li {
+  font-size: 13px;
+}
+.demo-v2-workspace .artifacts .viewer-tabs {
+  flex-wrap: wrap;
+  padding: 0 10px;
+  gap: 3px;
+}
+.demo-v2-workspace .file-tree {
+  overflow-y: auto;
+  min-height: 0;
+}
+.demo-v2-workspace .file-tree button {
+  min-width: 0;
+}
+.demo-v2-workspace .file-tree button span {
+  overflow-wrap: anywhere;
+}
+.demo-artifact-hint {
+  padding: 16px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.demo-region-tabs {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .demo-region-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .demo-region-tabs button {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 12px;
+  }
+  .demo-region-tabs button[aria-pressed="true"] {
+    background: #e5eee2;
+    color: var(--green);
+  }
+  .workspace.demo-v2-workspace {
+    display: block;
+    height: auto;
+    min-height: 0;
+  }
+  .demo-v2-workspace > * {
+    display: none;
+  }
+  .demo-v2-workspace[data-region="conversation"] > .conversation,
+  .demo-v2-workspace[data-region="mockup"] > .demo-canvas,
+  .demo-v2-workspace[data-region="documents"] > .artifacts {
+    display: flex;
+    width: 100%;
+    min-height: 65dvh;
+    height: auto;
+    max-height: none;
+  }
+  .demo-v2-workspace .conversation-scroll {
+    max-height: 60dvh;
+  }
+  .demo-project-controls {
+    max-height: 35dvh;
+  }
+}
