@@ -7,7 +7,7 @@ import type {
   VisualSnapshot,
 } from "@aidlc/shared";
 import { validVisualSelection } from "@aidlc/shared";
-import { chromium } from "@playwright/test";
+import { chromium } from "playwright-core";
 import { PromptError } from "../prompts/index.ts";
 import { listArtifacts, readArtifact } from "../reader/artifacts.ts";
 import { stale, validateContext } from "../reader/context.ts";
