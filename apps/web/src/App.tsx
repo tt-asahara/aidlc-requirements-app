@@ -6,8 +6,13 @@ import {
   useState,
 } from "react";
 import { CreateDialog, type DialogKind } from "./components/CreateDialog";
+import {
+  AnnotationPreview,
+  DemoMockAnnotation,
+} from "./components/DemoMockAnnotation";
 import { DocumentView } from "./components/DocumentView";
 import { Icon } from "./components/Icon";
+import { annotationMatches, mockReference } from "./demo/annotations";
 import {
   type ArtifactPath,
   artifactFiles,
@@ -31,6 +36,8 @@ export function App() {
   const [widths, setWidths] = useState({ left: 350, right: 250 });
   const [region, setRegion] = useState("mockup");
   const openArtifact = (next: "design" | "files" | "mock") => {
+    if (project && next !== "mock")
+      dispatch({ type: "invalidateAnnotation", projectId: project.id });
     setTab(next);
     setRegion("mockup");
   };
@@ -42,6 +49,17 @@ export function App() {
   const round = project && currentRound(project);
   const busy = !!project?.job;
   const waiting = !!project && pendingPermission(project);
+  const annotation = project?.annotationDraft;
+  const annotationStale =
+    !!annotation &&
+    (!project ||
+      !round ||
+      !annotationMatches(annotation, {
+        projectId: project.id,
+        roundId: round.id,
+        stage: round.stage,
+        documentVersion: project.documentVersion,
+      }));
   const complete = !!round && round.stage >= stages.length;
   const canStartRound =
     !busy && project?.rounds.every((r) => r.stage >= stages.length);
@@ -92,8 +110,17 @@ export function App() {
     setFile("design-document/README.md");
     setFailNext(false);
   };
-  const send = (text: string, kind: "answer" | "document" = "answer") => {
+  const send = (
+    text: string,
+    kind: "answer" | "document" = "answer",
+    includeAnnotation = false,
+  ) => {
     if (!project || busy || waiting || !round) return;
+    if (annotation && (!includeAnnotation || annotationStale)) {
+      setRegion("conversation");
+      composer.current?.focus();
+      return;
+    }
     dispatch({
       type: "send",
       projectId: project.id,
@@ -101,6 +128,7 @@ export function App() {
       text,
       kind,
       fail: failNext,
+      includeAnnotation,
     });
     setFailNext(false);
   };
@@ -497,6 +525,9 @@ export function App() {
                         </span>
                       </div>
                       <p>{m.text}</p>
+                      {m.annotation && (
+                        <AnnotationPreview annotation={m.annotation} />
+                      )}
                       {m.id === "seed-assistant" && (
                         <button
                           className="artifact-link"
@@ -681,7 +712,9 @@ export function App() {
                       className="text-button"
                       type="button"
                       disabled={busy || waiting}
-                      onClick={() => send(project.draft)}
+                      onClick={() =>
+                        send(project.draft, "answer", !!annotation)
+                      }
                     >
                       同じ内容で再送（デモ）
                     </button>
@@ -695,11 +728,43 @@ export function App() {
                 <div ref={endOfMessages} />
               </div>
               <div className="composer-area">
+                {waiting && (
+                  <button
+                    type="button"
+                    className="annotation-permission-link"
+                    onClick={() => {
+                      setRegion("conversation");
+                      document
+                        .querySelector(".permission-card.pending")
+                        ?.scrollIntoView({ block: "nearest" });
+                    }}
+                  >
+                    送信にはデモの許可確認が必要です · 許可カードへ
+                  </button>
+                )}
+                {annotation && (
+                  <AnnotationPreview
+                    annotation={annotation}
+                    stale={annotationStale}
+                    onClear={() =>
+                      dispatch({
+                        type: "clearAnnotation",
+                        projectId: project.id,
+                      })
+                    }
+                  />
+                )}
+                {annotation && (
+                  <p className="annotation-draft-note">
+                    本文は編集できます。画像と上の参照情報も、明示送信したときだけブラウザ内の会話に追加します。
+                  </p>
+                )}
+
                 <form
                   className="composer"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    send(project.draft);
+                    send(project.draft, "answer", !!annotation);
                   }}
                 >
                   <label className="sr-only" htmlFor="reply">
@@ -711,7 +776,7 @@ export function App() {
                     rows={2}
                     value={project.draft}
                     maxLength={20000}
-                    disabled={!round || busy || waiting}
+                    disabled={!round || busy}
                     onChange={(e) =>
                       dispatch({
                         type: "draft",
@@ -733,7 +798,7 @@ export function App() {
                         !e.nativeEvent.isComposing
                       ) {
                         e.preventDefault();
-                        send(project.draft);
+                        send(project.draft, "answer", !!annotation);
                       }
                     }}
                   />
@@ -746,7 +811,11 @@ export function App() {
                       className="send-button"
                       type="submit"
                       disabled={
-                        !round || busy || waiting || !project.draft.trim()
+                        !round ||
+                        busy ||
+                        waiting ||
+                        annotationStale ||
+                        !project.draft.trim()
                       }
                       aria-label="回答を送信"
                     >
@@ -843,12 +912,37 @@ export function App() {
                           <span />
                           <p>midday.local · 架空の画面</p>
                         </div>
-                        <iframe
-                          title="ランチ注文の架空 HTML モック"
-                          sandbox="allow-scripts"
-                          referrerPolicy="no-referrer"
-                          srcDoc={interactiveMockHtml}
-                        />
+                        <DemoMockAnnotation
+                          key={`${project.id}:${round.id}:${round.stage}:${project.documentVersion}`}
+                          disabled={busy}
+                          onAttach={(selection) => {
+                            dispatch({
+                              type: "annotate",
+                              projectId: project.id,
+                              annotation: {
+                                projectId: project.id,
+                                roundId: round.id,
+                                stage: round.stage,
+                                documentVersion: project.documentVersion,
+                                snapshotId: mockReference.id,
+                                sourceSha256: mockReference.sourceSha256,
+                                selection,
+                                stale: false,
+                              },
+                            });
+                            setRegion("conversation");
+                            requestAnimationFrame(() =>
+                              composer.current?.focus(),
+                            );
+                          }}
+                        >
+                          <iframe
+                            title="ランチ注文の架空 HTML モック"
+                            sandbox="allow-scripts"
+                            referrerPolicy="no-referrer"
+                            srcDoc={interactiveMockHtml}
+                          />
+                        </DemoMockAnnotation>
                         <p className="sandbox-note">
                           <Icon name="shield" size={13} />
                           sandbox 内のサンプル · 外部通信なし

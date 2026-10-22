@@ -1,3 +1,5 @@
+import { annotationMatches, type MockAnnotation } from "./annotations";
+
 // UI-only fixtures. Never sends prompts, executes commands, or calls an API.
 export const stages = [
   ["intent-capture", "目的の整理"],
@@ -9,7 +11,12 @@ export const stages = [
   ["refined-mockups", "詳細モック"],
 ] as const;
 export type PermissionStatus = "pending" | "approved" | "denied" | "revoked";
-export type Message = { id: string; role: "user" | "assistant"; text: string };
+export type Message = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  annotation?: MockAnnotation;
+};
 export type Permission = {
   id: string;
   command: string;
@@ -30,6 +37,7 @@ export type Job = {
   kind: "answer" | "document";
   text: string;
   fail: boolean;
+  annotation: MockAnnotation | null;
 };
 export type Project = {
   id: string;
@@ -43,6 +51,7 @@ export type Project = {
   error: string;
   notice: string;
   documentVersion: number;
+  annotationDraft: MockAnnotation | null;
 };
 export type DemoState = { projects: Project[]; selectedId: string | null };
 export type Action =
@@ -51,6 +60,8 @@ export type Action =
   | { type: "round"; projectId: string; id: string; requirement: string }
   | { type: "selectRound"; projectId: string; id: string }
   | { type: "draft"; projectId: string; text: string }
+  | { type: "annotate"; projectId: string; annotation: MockAnnotation }
+  | { type: "clearAnnotation" | "invalidateAnnotation"; projectId: string }
   | {
       type: "send";
       projectId: string;
@@ -58,6 +69,7 @@ export type Action =
       text: string;
       fail?: boolean;
       kind?: "answer" | "document";
+      includeAnnotation?: boolean;
     }
   | { type: "finish"; projectId: string; jobId: string }
   | { type: "cancel"; projectId: string }
@@ -104,6 +116,7 @@ function newProject(id: string, name: string): Project {
     error: "",
     notice: "",
     documentVersion: 0,
+    annotationDraft: null,
   };
 }
 export function initialState(): DemoState {
@@ -150,6 +163,11 @@ export function demoReducer(state: DemoState, action: Action): DemoState {
   if (action.type === "select")
     return {
       ...state,
+      projects: state.projects.map((p) =>
+        p.id === state.selectedId && p.id !== action.id && p.annotationDraft
+          ? { ...p, annotationDraft: { ...p.annotationDraft, stale: true } }
+          : p,
+      ),
       selectedId:
         action.id === null || state.projects.some((p) => p.id === action.id)
           ? action.id
@@ -178,6 +196,38 @@ export function demoReducer(state: DemoState, action: Action): DemoState {
         rounds: project.rounds.map((r) => (r.id === next.id ? next : r)),
       });
       if (action.type === "draft") return { ...project, draft: action.text };
+      if (action.type === "clearAnnotation")
+        return { ...project, annotationDraft: null };
+      if (action.type === "invalidateAnnotation")
+        return project.annotationDraft
+          ? {
+              ...project,
+              annotationDraft: { ...project.annotationDraft, stale: true },
+            }
+          : project;
+      if (action.type === "annotate") {
+        if (
+          project.job ||
+          !round ||
+          !annotationMatches(action.annotation, {
+            projectId: project.id,
+            roundId: round.id,
+            stage: round.stage,
+            documentVersion: project.documentVersion,
+          })
+        )
+          return project;
+        return {
+          ...project,
+          annotationDraft: action.annotation,
+          draft:
+            project.draft && project.draft !== permissionDraft
+              ? project.draft
+              : "この箇所を変更したいです。",
+          notice:
+            "画像・参照情報を下書きに添付しました。まだ送信していません。",
+        };
+      }
       if (action.type === "selectRound")
         return project.job || !project.rounds.some((r) => r.id === action.id)
           ? project
@@ -187,6 +237,7 @@ export function demoReducer(state: DemoState, action: Action): DemoState {
               error: "",
               notice: "",
               draft: "",
+              annotationDraft: null,
             };
       if (action.type === "round") {
         if (
@@ -221,6 +272,7 @@ export function demoReducer(state: DemoState, action: Action): DemoState {
           rounds: [...project.rounds, next],
           roundId: next.id,
           draft: "",
+          annotationDraft: null,
           error: "",
           notice: "デモラウンドを開始しました。",
         };
@@ -231,7 +283,17 @@ export function demoReducer(state: DemoState, action: Action): DemoState {
           !round ||
           pendingPermission(project) ||
           !action.text.trim() ||
-          action.text.trim().length > 20000
+          action.text.trim().length > 20000 ||
+          (action.includeAnnotation &&
+            (!project.annotationDraft || action.kind === "document")) ||
+          (project.annotationDraft &&
+            (!action.includeAnnotation ||
+              !annotationMatches(project.annotationDraft, {
+                projectId: project.id,
+                roundId: round.id,
+                stage: round.stage,
+                documentVersion: project.documentVersion,
+              })))
         )
           return project;
         const next = updateRound({
@@ -242,12 +304,16 @@ export function demoReducer(state: DemoState, action: Action): DemoState {
               id: `${action.jobId}-user`,
               role: "user",
               text: action.text.trim(),
+              ...(project.annotationDraft
+                ? { annotation: project.annotationDraft }
+                : {}),
             },
           ],
         });
         return {
           ...next,
           draft: "",
+          annotationDraft: null,
           error: "",
           notice: "",
           job: {
@@ -256,6 +322,7 @@ export function demoReducer(state: DemoState, action: Action): DemoState {
             text: action.text.trim(),
             kind: action.kind ?? "answer",
             fail: action.fail ?? false,
+            annotation: project.annotationDraft,
           },
         };
       }
@@ -277,16 +344,22 @@ export function demoReducer(state: DemoState, action: Action): DemoState {
             error:
               "デモ用のエラーです。進捗は変更していません。入力内容を確認して、もう一度送信できます。",
             draft: job.text,
+            annotationDraft: job.annotation
+              ? { ...job.annotation, stale: true }
+              : null,
           };
         const target = project.rounds.find((r) => r.id === job.roundId);
         if (!target) return { ...project, job: null };
         const advance =
-          job.kind === "answer" && job.text === "1. この内容で次へ（デモ）";
+          !job.annotation &&
+          job.kind === "answer" &&
+          job.text === "1. この内容で次へ（デモ）";
         const stage = advance
           ? Math.min(stages.length, target.stage + 1)
           : target.stage;
-        const text =
-          job.kind === "document"
+        const text = job.annotation
+          ? "画像の指定と本文をブラウザ内で受け取りました。これは操作体験用の固定応答です。AIへの送信や、モック・要件・文書の変更は行っていません。"
+          : job.kind === "document"
             ? "架空の設計書の表示版を更新しました。実ファイルの生成や /aidlc --doc の実行はしていません。"
             : stage >= stages.length
               ? "すべての模擬ステージを確認しました。新しい要件ラウンドを試せます。これは実際の AI-DLC の完了・承認を表しません。"
