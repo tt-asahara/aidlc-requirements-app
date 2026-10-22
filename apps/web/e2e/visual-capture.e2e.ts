@@ -22,6 +22,13 @@ test("real server capture uses HTML bytes, attaches the marked PNG explicitly, a
   });
   await create(page, "実画像の指定（合成・モデル未使用）");
   await start(page);
+  // Enforce the production connect policy in the development-server run too.
+  await page.evaluate(() => {
+    const policy = document.createElement("meta");
+    policy.httpEquiv = "Content-Security-Policy";
+    policy.content = "connect-src 'self'";
+    document.head.append(policy);
+  });
   await expect(
     page.getByRole("button", { name: "1. 個人用で進める", exact: true }),
   ).toBeEnabled();
@@ -106,7 +113,10 @@ test("real server capture uses HTML bytes, attaches the marked PNG explicitly, a
         new Uint8Array(
           await crypto.subtle.digest(
             "SHA-256",
-            await (await fetch(url ?? "")).arrayBuffer(),
+            Uint8Array.from(
+              atob((url ?? "").split(",")[1] ?? ""),
+              (character) => character.charCodeAt(0),
+            ),
           ),
         ),
         (b) => b.toString(16).padStart(2, "0"),
