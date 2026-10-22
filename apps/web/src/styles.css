@@ -1905,3 +1905,354 @@ a {
   top: 0;
   z-index: 30;
 }
+
+/* The disconnected demo uses the same conversation / canvas / artifact order as V2. */
+.workspace.demo-v2-workspace {
+  grid-template-columns: min(var(--left-width), 30vw) 7px minmax(360px, 1fr) 7px min(
+      var(--right-width),
+      24vw
+    );
+}
+.demo-v2-workspace .conversation,
+.demo-v2-workspace .demo-canvas,
+.demo-v2-workspace .artifacts {
+  min-width: 0;
+  min-height: 0;
+}
+.demo-project-controls {
+  flex-shrink: 0;
+  max-height: 35%;
+  overflow: auto;
+  border-bottom: 1px solid var(--border);
+  background: #f6f7f3;
+}
+.demo-project-controls > summary {
+  padding: 13px 18px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+.demo-v2-workspace .navigation {
+  padding: 16px 20px;
+  overflow: visible;
+}
+.demo-v2-workspace .navigation .project-heading {
+  margin-bottom: 20px;
+}
+.demo-canvas {
+  display: flex;
+  flex-direction: column;
+  background: #f8faf6;
+  overflow: hidden;
+}
+.demo-canvas .viewer-panel {
+  min-height: 0;
+}
+.demo-canvas .document {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.demo-canvas .document p,
+.demo-canvas .document li {
+  font-size: 13px;
+}
+.demo-v2-workspace .artifacts .viewer-tabs {
+  flex-wrap: wrap;
+  padding: 0 10px;
+  gap: 3px;
+}
+.demo-v2-workspace .file-tree {
+  overflow-y: auto;
+  min-height: 0;
+}
+.demo-v2-workspace .file-tree button {
+  min-width: 0;
+}
+.demo-v2-workspace .file-tree button span {
+  overflow-wrap: anywhere;
+}
+.demo-artifact-hint {
+  padding: 16px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.demo-region-tabs {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .demo-region-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .demo-region-tabs button {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 12px;
+  }
+  .demo-region-tabs button[aria-pressed="true"] {
+    background: #e5eee2;
+    color: var(--green);
+  }
+  .workspace.demo-v2-workspace {
+    display: block;
+    height: auto;
+    min-height: 0;
+  }
+  .demo-v2-workspace > * {
+    display: none;
+  }
+  .demo-v2-workspace[data-region="conversation"] > .conversation,
+  .demo-v2-workspace[data-region="mockup"] > .demo-canvas,
+  .demo-v2-workspace[data-region="documents"] > .artifacts {
+    display: flex;
+    width: 100%;
+    min-height: 65dvh;
+    height: auto;
+    max-height: none;
+  }
+  .demo-v2-workspace .conversation-scroll {
+    max-height: 60dvh;
+  }
+  .demo-project-controls {
+    max-height: 35dvh;
+  }
+}
+
+/* Demo-only visual feedback; selection is bound to a bundled immutable image. */
+.demo-annotation .annotation-toolbar {
+  margin: 0;
+  min-width: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+.annotation-toolbar button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.annotation-toolbar button[aria-pressed="true"] {
+  color: var(--green);
+  background: #e5eee2;
+  border-color: #8aa18b;
+}
+.annotation-editor {
+  padding: 12px;
+}
+.annotation-editor p,
+.annotation-draft-note {
+  font-size: 11px;
+  line-height: 1.7;
+  color: #52624f;
+  margin: 0 0 10px;
+}
+.annotation-surface {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid #b4c2ad;
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+.annotation-surface img,
+.annotation-thumbnail img {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+.annotation-mark {
+  position: absolute;
+  border: 2px solid #9b3f16;
+  background: #e8853224;
+  pointer-events: none;
+}
+.annotation-mark.pin {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #9b3f16;
+  transform: translate(-50%, -50%);
+}
+.annotation-mark > span {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  background: #9b3f16;
+  color: white;
+  font-size: 11px;
+  line-height: 1;
+}
+.annotation-mark.pin > span {
+  border-radius: 50%;
+}
+.annotation-actions {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #f8faf6;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 0;
+}
+.annotation-actions > span {
+  flex: 1 1 100%;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.annotation-actions button {
+  font-size: 12px;
+}
+.annotation-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+  border: 1px solid #b6c6ae;
+  border-radius: 8px;
+  background: #f4f7ef;
+  max-width: 100%;
+}
+.annotation-thumbnail {
+  position: relative;
+  flex: 0 0 90px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.annotation-reference {
+  min-width: 0;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.annotation-reference > span,
+.annotation-reference strong {
+  display: block;
+}
+.annotation-reference strong {
+  color: #304c35;
+  font-size: 11px;
+}
+.annotation-reference details {
+  margin: 4px 0;
+}
+.annotation-reference summary {
+  cursor: pointer;
+}
+.annotation-reference p {
+  font-size: 10px;
+  margin: 6px 0;
+  white-space: normal;
+}
+.annotation-preview[data-stale="true"] {
+  border-color: #bb7025;
+  background: #fff4e7;
+}
+.annotation-preview[data-stale="true"] strong {
+  color: #8e4414;
+}
+.annotation-permission-link {
+  width: 100%;
+  text-align: left;
+  font-size: 11px;
+  padding: 8px;
+  margin-bottom: 8px;
+  border: 1px solid #d7c99f;
+  border-radius: 6px;
+  background: #fff8e8;
+}
+.demo-v2-workspace .composer-area {
+  max-height: 65%;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.demo-v2-workspace .composer textarea {
+  min-height: 80px;
+}
+.workspace-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  background: #f6f9f7;
+}
+.workspace-controls button {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+}
+.workspace-controls small {
+  color: #536b61;
+}
+.file-tree h3 {
+  margin: 14px 10px 5px;
+  font-size: 12px;
+  color: #536b61;
+}
+.file-tree button small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1101px) {
+  .workspace.demo-v2-workspace[data-left-fold="true"] {
+    grid-template-columns: 0 0 minmax(360px, 1fr) 7px min(
+        var(--right-width),
+        24vw
+      );
+  }
+  .workspace.demo-v2-workspace[data-right-fold="true"] {
+    grid-template-columns: min(var(--left-width), 30vw) 7px minmax(360px, 1fr) 0 0;
+  }
+  .workspace.demo-v2-workspace[data-left-fold="true"][data-right-fold="true"] {
+    grid-template-columns: 0 0 minmax(0, 1fr) 0 0;
+  }
+  .demo-v2-workspace[data-left-fold="true"] > .conversation,
+  .demo-v2-workspace[data-right-fold="true"] > .artifacts {
+    display: none;
+  }
+  .demo-v2-workspace[data-left-fold="true"] > [role="separator"]:nth-child(2),
+  .demo-v2-workspace[data-right-fold="true"] > [role="separator"]:nth-child(4) {
+    visibility: hidden;
+  }
+}
+@media (max-width: 1100px) {
+  .workspace-controls {
+    display: none;
+  }
+}
+.demo-impact {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+.demo-impact textarea {
+  display: block;
+  width: 100%;
+  min-height: 80px;
+}
+.demo-impact button {
+  padding: 8px 12px;
+  cursor: pointer;
+}

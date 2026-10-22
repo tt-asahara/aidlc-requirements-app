@@ -1,5 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 export async function create(page: Page, name: string) {
+  const health = await page.request.get("/api/health");
+  expect((await health.json()).runner).toBe("fake");
   await page.goto("/");
   await page
     .getByRole("button", { name: "＋ 新しいプロジェクト", exact: true })
@@ -9,6 +11,7 @@ export async function create(page: Page, name: string) {
   await expect(
     page.getByRole("heading", { name, level: 1, exact: true }),
   ).toBeVisible();
+  await page.getByText("工程・ラウンドの判断と操作", { exact: true }).click();
   await expect(
     page.getByRole("button", { name: "新しい要件ラウンド", exact: true }),
   ).toBeEnabled();

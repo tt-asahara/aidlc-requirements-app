@@ -36,7 +36,7 @@ try {
   delete env.NODE_CHANNEL_FD;
   delete env.AIDLC_UNATTENDED;
   const cli = Bun.spawn(argv, {
-    stdin: "ignore",
+    stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
     env,

@@ -38,3 +38,31 @@ test("validation seccomp changes exactly clone/setns/unshare and preserves the e
     readFileSync(new URL("docker-compose.yml", root), "utf8"),
   ).not.toContain("security_opt");
 });
+
+test("CI browser policy is an explicit app-only overlay and cannot alter ports, mounts or privileges", () => {
+  const overlay = readFileSync(
+    new URL("docker-compose.ci-browser.yml", root),
+    "utf8",
+  );
+  expect(Bun.YAML.parse(overlay)).toEqual({
+    services: {
+      app: {
+        security_opt: ["seccomp=./security/chromium-validation-seccomp.json"],
+      },
+    },
+  });
+  const workflow = readFileSync(
+    new URL(".github/workflows/ci.yml", root),
+    "utf8",
+  );
+  const [checks, docker] = workflow.split("  docker:");
+  expect(checks).not.toContain("docker-compose.ci-browser.yml");
+  expect(
+    docker?.match(
+      /docker compose -p aidlc-ci -f docker-compose.yml -f docker-compose.ci-browser.yml /g,
+    ),
+  ).toHaveLength(4);
+  expect(
+    readFileSync(new URL("docker-compose.yml", root), "utf8"),
+  ).not.toContain("security_opt");
+});

@@ -1,0 +1,5 @@
+# Explicit opt-in for GitHub CI's ephemeral app container only.
+services:
+  app:
+    security_opt:
+      - seccomp=./security/chromium-validation-seccomp.json

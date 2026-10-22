@@ -1,4 +1,5 @@
 import type {
+  ExpectedContext,
   HealthResponse,
   Progress,
   ProjectSummary,
@@ -12,8 +13,10 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, subscribeEvents } from "../api/client.ts";
-import { ArtifactMarkdown, ArtifactPane } from "./ArtifactPane.tsx";
+import { ApiError, api, subscribeEvents } from "../api/client.ts";
+import { WorkspaceControls } from "../components/WorkspaceControls.tsx";
+import { ArtifactMarkdown } from "./ArtifactPane.tsx";
+import { MockupWorkspace } from "./MockupWorkspace.tsx";
 import {
   ApprovedRules,
   PermissionCard,
@@ -24,6 +27,11 @@ import {
   permissionDraft,
   revokeDraft,
 } from "./permission-draft.ts";
+import {
+  type VisualDraft,
+  VisualDraftPreview,
+  visualContextMatches,
+} from "./VisualCapture.tsx";
 import "./connected.css";
 
 const money = (n: number | null) =>
@@ -139,6 +147,7 @@ export function ConnectedApp() {
   );
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const locks = useRef(new Map<string, string>());
+  const draftContexts = useRef(new Map<string, ExpectedContext>());
   const [pendingTurns, setPendingTurns] = useState<Record<string, string>>({});
   const updatePending = useCallback(
     (key: string, value: string | null) =>
@@ -191,6 +200,31 @@ export function ConnectedApp() {
     ? undefined
     : projects.data?.projects.find((project) => project.id === selected);
   const draftKey = `${user}/${selected}`;
+  const visualIdentity = useRef({ user, selected });
+  useEffect(() => {
+    if (
+      visualIdentity.current.user === user &&
+      visualIdentity.current.selected === selected
+    )
+      return;
+    visualIdentity.current = { user, selected };
+    setDrafts((old) => {
+      let changed = false;
+      const next = Object.fromEntries(
+        Object.entries(old).map(([key, value]) => {
+          if (value.visual && !value.visual.stale) {
+            changed = true;
+            return [
+              key,
+              { ...value, visual: { ...value.visual, stale: true } },
+            ];
+          }
+          return [key, value];
+        }),
+      );
+      return changed ? next : old;
+    });
+  }, [user, selected]);
   const createProject = async (name: string) => {
     if (createLock.current) return;
     createLock.current = true;
@@ -302,6 +336,12 @@ export function ConnectedApp() {
                       ? "記録値（モード不明）"
                       : "推計費用"}{" "}
                   {money(project.cost.reportedUsd)}
+                  {project.cost.reservedUsd > 0 && (
+                    <small>
+                      {" "}
+                      · 未確定分あり（予約 {money(project.cost.reservedUsd)}）
+                    </small>
+                  )}
                 </p>
               </button>
             ))}
@@ -323,14 +363,37 @@ export function ConnectedApp() {
           setDraft={(value) =>
             setDrafts((old) => ({
               ...old,
-              [draftKey]: { text: value, permissionRequestId: null },
+              [draftKey]: {
+                text: value,
+                permissionRequestId: null,
+                ...(value && old[draftKey]?.visual
+                  ? { visual: old[draftKey].visual }
+                  : {}),
+              },
             }))
           }
-          insertPermissionDraft={(id, replace) =>
-            setDrafts((old) => ({
-              ...old,
-              [draftKey]: permissionDraft(old[draftKey], id, replace),
-            }))
+          visualDraft={drafts[draftKey]?.visual}
+          setVisualDraft={(visual) =>
+            setDrafts((old) => {
+              const previous = old[draftKey] ?? {
+                text: "",
+                permissionRequestId: null,
+              };
+              const { visual: _removed, ...rest } = previous;
+              return {
+                ...old,
+                [draftKey]: { ...rest, ...(visual ? { visual } : {}) },
+              };
+            })
+          }
+          insertPermissionDraft={(id, replace, context) =>
+            setDrafts((old) => {
+              const previous = old[draftKey];
+              const next = permissionDraft(previous, id, replace);
+              if (next !== previous && context)
+                draftContexts.current.set(draftKey, structuredClone(context));
+              return { ...old, [draftKey]: next };
+            })
           }
           revokePermissionDraft={(id) =>
             setDrafts((old) => {
@@ -340,6 +403,7 @@ export function ConnectedApp() {
                 : old;
             })
           }
+          draftContexts={draftContexts.current}
           locks={locks.current}
           pending={pendingTurns[draftKey] ?? null}
           updatePending={updatePending}
@@ -375,7 +439,10 @@ function ProjectScreen({
   setDraft,
   insertPermissionDraft,
   revokePermissionDraft,
+  visualDraft,
+  setVisualDraft,
   locks,
+  draftContexts,
   pending,
   updatePending,
 }: {
@@ -385,14 +452,21 @@ function ProjectScreen({
   back: () => void;
   draft: string;
   setDraft: (value: string) => void;
-  insertPermissionDraft: (id: string, replace?: boolean) => void;
+  insertPermissionDraft: (
+    id: string,
+    replace?: boolean,
+    context?: ExpectedContext,
+  ) => void;
   revokePermissionDraft: (id: string) => void;
+  visualDraft: VisualDraft | undefined;
+  setVisualDraft: (value: VisualDraft | undefined) => void;
   locks: Map<string, string>;
+  draftContexts: Map<string, ExpectedContext>;
   pending: string | null;
   updatePending: (key: string, value: string | null) => void;
 }) {
   const timelineEnd = useRef<HTMLDivElement>(null);
-  const [selectedFile, setSelectedFile] = useState("design-document/README.md");
+  const [selectedFile, setSelectedFile] = useState("");
   const client = useQueryClient();
   const prefix = useMemo(
     () => ["project", user, project.id],
@@ -404,6 +478,11 @@ function ProjectScreen({
     (value: string | null) => updatePending(lockKey, value),
     [lockKey, updatePending],
   );
+  const [region, setRegion] = useState("mockup");
+  const [leftFold, setLeftFold] = useState(false),
+    [rightFold, setRightFold] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const roundContext = useRef<ExpectedContext | undefined>(undefined);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [roundDialog, setRoundDialog] = useState(false);
@@ -423,13 +502,6 @@ function ProjectScreen({
     retry: false,
     enabled: project.status === "ready",
   });
-  const progress = useQuery({
-    queryKey: [...prefix, "progress"],
-    queryFn: () => api<Progress>(user, `/api/projects/${project.id}/progress`),
-    refetchInterval: 1000,
-    retry: false,
-    enabled: project.status === "ready",
-  });
   const turns = useMemo(
     () =>
       [
@@ -441,6 +513,26 @@ function ProjectScreen({
       ].sort((a, b) => a.seq - b.seq),
     [history.data],
   );
+  const settledRevision =
+    turns.filter((t) => !["queued", "running"].includes(t.status)).at(-1)?.id ??
+    null;
+  const progress = useQuery({
+    queryKey: [...prefix, "progress", settledRevision],
+    placeholderData: (previous) => previous,
+    queryFn: () => api<Progress>(user, `/api/projects/${project.id}/progress`),
+    refetchInterval: 1000,
+    retry: false,
+    enabled: project.status === "ready",
+  });
+  const execution = useQuery({
+    queryKey: [...prefix, "context", settledRevision],
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      api<ExpectedContext>(user, `/api/projects/${project.id}/context`),
+    refetchInterval: 1000,
+    retry: false,
+    enabled: project.status === "ready",
+  });
   const active = turns.find((turn) =>
     ["queued", "running"].includes(turn.status),
   );
@@ -453,9 +545,14 @@ function ProjectScreen({
     user,
     projectId: project.id,
     ready: project.status === "ready",
-    compatible,
+    compatible: compatible && !!execution.data && !execution.error,
     locks,
-    insertDraft: insertPermissionDraft,
+    insertDraft: (id, replace) =>
+      insertPermissionDraft(
+        id,
+        replace,
+        execution.data ? structuredClone(execution.data) : undefined,
+      ),
     revokeDraft: revokePermissionDraft,
   });
   const canSend =
@@ -464,8 +561,17 @@ function ProjectScreen({
     !busy &&
     !history.isPending &&
     !progress.isPending &&
+    !progress.isPlaceholderData &&
+    !execution.isPlaceholderData &&
     !history.error &&
-    !progress.error;
+    !progress.error &&
+    !execution.error &&
+    !!execution.data &&
+    execution.data.space === progress.data?.space &&
+    execution.data.activeIntent === (progress.data?.active?.dirName ?? null) &&
+    execution.data.currentStage ===
+      (progress.data?.active?.currentStage ?? null) &&
+    (execution.data.latestTurn?.id ?? null) === (turns.at(-1)?.id ?? null);
   const refresh = useCallback(() => {
     void client.invalidateQueries({ queryKey: prefix });
     void client.invalidateQueries({ queryKey: ["projects", user] });
@@ -474,6 +580,7 @@ function ProjectScreen({
     const targetId = submitted ?? locks.get(lockKey);
     const recorded = turns.find((turn) => turn.id === targetId);
     if (recorded && !["queued", "running"].includes(recorded.status)) {
+      setCancelling(false);
       locks.delete(lockKey);
       setSubmitted(null);
     }
@@ -517,10 +624,39 @@ function ProjectScreen({
     );
     return () => controller.abort();
   }, [project.id, target, user, refresh]);
+  useEffect(() => {
+    if (!draft) draftContexts.delete(lockKey);
+  }, [draft, draftContexts, lockKey]);
+  const visualStale =
+    !!visualDraft &&
+    (visualDraft.stale ||
+      !visualContextMatches(visualDraft.snapshot, execution.data));
+  const invalidateVisual = () => {
+    if (visualDraft && !visualDraft.stale)
+      setVisualDraft({ ...visualDraft, stale: true });
+  };
+  const openFile = (path: string) => {
+    if (path) invalidateVisual();
+    setSelectedFile(path);
+    setRegion("mockup");
+  };
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
   const send = async (input: SendTurn, clearDraft = false) => {
     if (!canSend || locks.has(lockKey)) return;
+    if (visualDraft && (input.origin !== "typed" || visualStale)) {
+      setError(
+        "画像の対象を確認してください。本文を保持しています。画像の再指定または解除が必要です。",
+      );
+      setRegion("conversation");
+      return;
+    }
+    if (input.origin === "typed" && !draftContexts.has(lockKey)) {
+      setError(
+        "下書きの対象を確認できません。本文を保持して、対象を選び直してください。",
+      );
+      return;
+    }
     locks.set(lockKey, "sending");
     setSubmitted("sending");
     setSending(true);
@@ -530,7 +666,24 @@ function ProjectScreen({
       const result = await api<{ turn: PublicTurn }>(
         user,
         `/api/projects/${project.id}/turns`,
-        { body: input },
+        {
+          body: {
+            ...input,
+            ...(input.origin === "typed" && visualDraft
+              ? { visualAttachmentId: visualDraft.snapshot.id }
+              : {}),
+            ...(input.origin === "typed" &&
+            draftContexts.get(lockKey)?.reference
+              ? { purpose: "mockup_revision" }
+              : {}),
+            expectedContext:
+              input.origin === "typed"
+                ? draftContexts.get(lockKey)
+                : input.origin === "action" && input.action === "start_round"
+                  ? roundContext.current
+                  : execution.data,
+          },
+        },
       );
       locks.set(lockKey, result.turn.id);
       setSubmitted(result.turn.id);
@@ -540,6 +693,7 @@ function ProjectScreen({
     } catch (err) {
       locks.delete(lockKey);
       setSubmitted(null);
+      if (err instanceof ApiError && err.status === 409) invalidateVisual();
       setError(err instanceof Error ? err.message : "送信に失敗しました");
       refresh();
     } finally {
@@ -549,11 +703,13 @@ function ProjectScreen({
   const cancel = async () => {
     if (!target || target === "sending") return;
     try {
+      setCancelling(true);
       await api(user, `/api/projects/${project.id}/turns/${target}/cancel`, {
         method: "POST",
       });
       refresh();
     } catch (err) {
+      setCancelling(false);
       setError(err instanceof Error ? err.message : "中止できませんでした");
     }
   };
@@ -596,6 +752,16 @@ function ProjectScreen({
         </button>
         <h1>{project.name}</h1>
         <span className="mode-tag">{modeLabel(project)}</span>
+        <small>
+          実行対象: {progress.data?.active?.dirName ?? "未開始"} /{" "}
+          {progress.data?.active?.currentStage ?? "工程なし"}
+        </small>
+        <small>
+          接続準備:{" "}
+          {compatible && (health?.runner === "fake" || health?.aidlc.ready)
+            ? "準備完了"
+            : "確認が必要"}
+        </small>
         <span
           role="status"
           data-testid="waiting-badge"
@@ -615,7 +781,7 @@ function ProjectScreen({
               : "推計費用"}{" "}
           {money(project.cost.reportedUsd)}
           {project.cost.reservedUsd > 0 &&
-            ` / 予約 ${money(project.cost.reservedUsd)}`}
+            ` / 未確定分あり・予約 ${money(project.cost.reservedUsd)}`}
         </small>
       </div>
       {!compatible && (
@@ -633,99 +799,154 @@ function ProjectScreen({
           {error || history.error?.message || progress.error?.message}
         </p>
       )}
-      <main className="connected-workspace">
-        <aside className="progress-pane">
-          <p className="eyebrow">PROGRESS</p>
-          <h2>要件の進捗</h2>
-          <ol className="round-list">
-            {progress.data?.intents.map((intent, i) => (
-              <li
-                key={intent.dirName}
-                className={intent.isActive ? "active" : ""}
-              >
-                {i + 1} 周目 · {intent.status}
-              </li>
-            ))}
-          </ol>
-          {progress.data?.active && (
-            <ul className="stage-list">
-              {progress.data.active.stages
-                .filter((stage) => showSkip || stage.disposition !== "SKIP")
-                .map((stage) => (
-                  <li key={stage.slug} data-mark={stage.mark}>
-                    <span
-                      role="img"
-                      aria-label={
-                        stage.mark === "x"
-                          ? "承認済み"
-                          : stage.mark === "?"
-                            ? "承認待ち"
-                            : "ステージ状態"
-                      }
-                    >
-                      {
-                        {
-                          x: "✓",
-                          "?": "?",
-                          "-": "◐",
-                          R: "↺",
-                          S: "–",
-                          " ": "○",
-                        }[stage.mark]
-                      }
-                    </span>
-                    {stage.slug}
-                  </li>
-                ))}
-            </ul>
-          )}
-          <label className="skip-toggle">
-            <input
-              type="checkbox"
-              checked={showSkip}
-              onChange={(event) => setShowSkip(event.target.checked)}
-            />
-            スキップを表示
-          </label>
-          <div className="progress-actions">
-            <button
-              type="button"
-              disabled={!canSend}
-              className="primary"
-              onClick={() => setRoundDialog(true)}
-            >
-              新しい要件ラウンド
-            </button>
-            <button
-              type="button"
-              disabled={!canSend}
-              onClick={() =>
-                void send({ origin: "action", action: "update_doc" })
-              }
-            >
-              設計書を更新
-            </button>
-            <button
-              type="button"
-              disabled={!canSend}
-              onClick={() =>
-                void send({ origin: "action", action: "rebuild_doc" })
-              }
-            >
-              設計書を全再生成
-            </button>
-            <button
-              type="button"
-              disabled={!canSend}
-              onClick={() =>
-                void send({ origin: "action", action: "reopen_requirements" })
-              }
-            >
-              要件を開き直す
-            </button>
-          </div>
-        </aside>
+      <nav className="region-tabs" aria-label="作業領域">
+        {[
+          ["conversation", "会話・下書き"],
+          ["mockup", "モック・文書"],
+          ["documents", "設計書ナビ"],
+        ].map(([value, label]) => (
+          <button
+            type="button"
+            key={value}
+            aria-pressed={region === value}
+            onClick={() => setRegion(value ?? "mockup")}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {permissions.rows.some(
+        (r) => r.status === "pending" && r.turnId === turns.at(-1)?.id,
+      ) && (
+        <p className="next-action" role="status">
+          次の操作: ツール実行の許可要求があります。
+          <button
+            type="button"
+            onClick={() => {
+              setLeftFold(false);
+              setRegion("conversation");
+              requestAnimationFrame(() =>
+                document
+                  .querySelector<HTMLElement>(".permission-card.pending")
+                  ?.scrollIntoView({ block: "center" }),
+              );
+            }}
+          >
+            許可要求を確認
+          </button>
+          許可後も送信は自動で行いません。
+        </p>
+      )}
+      <WorkspaceControls
+        left={leftFold}
+        right={rightFold}
+        setLeft={setLeftFold}
+        setRight={setRightFold}
+      />
+      <main
+        className="connected-workspace v2-workspace"
+        data-region={region}
+        data-left-fold={leftFold}
+        data-right-fold={rightFold}
+      >
         <section className="conversation-pane" aria-label="会話">
+          <details className="progress-pane" id="formal-workflow">
+            <summary>工程・ラウンドの判断と操作</summary>
+            <p className="eyebrow">PROGRESS</p>
+            <h2>要件の進捗</h2>
+            <ol className="round-list">
+              {progress.data?.intents.map((intent, i) => (
+                <li
+                  key={intent.dirName}
+                  className={intent.isActive ? "active" : ""}
+                >
+                  {i + 1} 周目 · {intent.status}
+                </li>
+              ))}
+            </ol>
+            {progress.data?.active && (
+              <ul className="stage-list">
+                {progress.data.active.stages
+                  .filter((stage) => showSkip || stage.disposition !== "SKIP")
+                  .map((stage) => (
+                    <li key={stage.slug} data-mark={stage.mark}>
+                      <span
+                        role="img"
+                        aria-label={
+                          stage.mark === "x"
+                            ? "承認済み"
+                            : stage.mark === "?"
+                              ? "承認待ち"
+                              : "ステージ状態"
+                        }
+                      >
+                        {
+                          {
+                            x: "✓",
+                            "?": "?",
+                            "-": "◐",
+                            R: "↺",
+                            S: "–",
+                            " ": "○",
+                          }[stage.mark]
+                        }
+                      </span>
+                      {stage.slug}
+                    </li>
+                  ))}
+              </ul>
+            )}
+            <label className="skip-toggle">
+              <input
+                type="checkbox"
+                checked={showSkip}
+                onChange={(event) => setShowSkip(event.target.checked)}
+              />
+              スキップを表示
+            </label>
+            <div className="progress-actions">
+              <button
+                type="button"
+                disabled={!canSend}
+                className="primary"
+                onClick={() => {
+                  roundContext.current = execution.data
+                    ? structuredClone(execution.data)
+                    : undefined;
+                  setRoundDialog(true);
+                }}
+              >
+                新しい要件ラウンド
+              </button>
+              <button
+                type="button"
+                disabled={!canSend}
+                onClick={() =>
+                  void send({ origin: "action", action: "update_doc" })
+                }
+              >
+                設計書を更新
+              </button>
+              <button
+                type="button"
+                disabled={!canSend}
+                onClick={() =>
+                  void send({ origin: "action", action: "rebuild_doc" })
+                }
+              >
+                設計書を全再生成
+              </button>
+              <button
+                type="button"
+                disabled={!canSend || !progress.data?.active}
+                onClick={() =>
+                  void send({ origin: "action", action: "reopen_requirements" })
+                }
+              >
+                要件を開き直す
+              </button>
+            </div>
+          </details>
           <div className="conversation-heading">
             <h2>会話</h2>
             <small>送信した内容だけがサーバーへ渡ります</small>
@@ -789,7 +1010,7 @@ function ProjectScreen({
                         user,
                         projectId: project.id,
                         space: progress.data?.space ?? "default",
-                        open: setSelectedFile,
+                        open: openFile,
                       }}
                     />
                   )}
@@ -823,9 +1044,9 @@ function ProjectScreen({
                 <button
                   type="button"
                   onClick={() => void cancel()}
-                  disabled={!target || target === "sending"}
+                  disabled={cancelling || !target || target === "sending"}
                 >
-                  中止
+                  {cancelling ? "中止要求中…" : "中止"}
                 </button>
               </div>
             )}
@@ -865,33 +1086,98 @@ function ProjectScreen({
             }}
           >
             <label htmlFor="reply-input">返答</label>
+            {visualDraft && (
+              <VisualDraftPreview
+                draft={visualDraft}
+                stale={visualStale}
+                clear={() => {
+                  setVisualDraft(undefined);
+                  setError(
+                    "画像を解除しました。本文に残る参照情報も確認してください。",
+                  );
+                }}
+              />
+            )}
+            {draft && (
+              <small>
+                下書きの送信対象:{" "}
+                {draftContexts.get(lockKey)?.activeIntent ?? "未開始"} /{" "}
+                {draftContexts.get(lockKey)?.currentStage ?? "工程なし"} · 質問
+                #{draftContexts.get(lockKey)?.latestTurn?.seq ?? 0}
+              </small>
+            )}
             <textarea
               id="reply-input"
               value={draft}
               maxLength={20_000}
-              disabled={project.status !== "ready" || !compatible}
-              onChange={(event) => setDraft(event.target.value)}
+              disabled={
+                project.status !== "ready" || !compatible || !execution.data
+              }
+              onChange={(event) => {
+                if (!draftContexts.has(lockKey) && execution.data)
+                  draftContexts.set(lockKey, structuredClone(execution.data));
+                setDraft(event.target.value);
+              }}
               placeholder="番号または返答を入力…"
             />
+            {draft.length > 20_000 && (
+              <p role="alert">
+                下書きが20,000文字を超えています。内容を確認して編集してください。
+              </p>
+            )}
             <div>
               <small>{draft.length.toLocaleString()} / 20,000</small>
               <button
                 type="submit"
                 className="primary"
-                disabled={!canSend || !draft.trim()}
+                disabled={
+                  !canSend ||
+                  visualStale ||
+                  !draft.trim() ||
+                  draft.length > 20_000
+                }
               >
                 送信
               </button>
             </div>
           </form>
         </section>
-        <ArtifactPane
+        <MockupWorkspace
           user={user}
           projectId={project.id}
-          space={progress.data?.space ?? "default"}
-          selected={selectedFile}
-          open={setSelectedFile}
-          ready={project.status === "ready"}
+          progress={progress.data}
+          execution={execution.data}
+          selectedFile={selectedFile}
+          open={openFile}
+          canDraft={canSend && !draft.trim()}
+          canCapture={canSend}
+          showWorkflow={() => {
+            setLeftFold(false);
+            setRegion("conversation");
+            requestAnimationFrame(() => {
+              const d = document.getElementById(
+                "formal-workflow",
+              ) as HTMLDetailsElement | null;
+              if (d) {
+                d.open = true;
+                d.scrollIntoView();
+                d.querySelector("button")?.focus();
+              }
+            });
+          }}
+          invalidateVisual={invalidateVisual}
+          makeDraft={(text, context, visual) => {
+            setLeftFold(false);
+            setVisualDraft(visual);
+            if (visual && draft.trim())
+              text += `\n\n以前の下書き（必要な本文を残し、参照情報を確認してください）：\n${draft}`;
+            draftContexts.set(lockKey, structuredClone(context));
+            setDraft(text);
+            setRegion("conversation");
+            requestAnimationFrame(() =>
+              document.getElementById("reply-input")?.focus(),
+            );
+          }}
         />
       </main>
       {roundDialog && (

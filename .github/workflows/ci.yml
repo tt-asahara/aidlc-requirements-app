@@ -13,6 +13,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -23,19 +26,34 @@ jobs:
       - run: bun run build
       - run: bunx playwright install --with-deps chromium
       - run: bun run e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks-browser-failure
+          path: test-results
+          retention-days: 1
 
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
-      - run: docker compose -p aidlc-ci build
-      - run: docker compose -p aidlc-ci up -d --wait --wait-timeout 60
+      - run: docker compose -p aidlc-ci -f docker-compose.yml -f docker-compose.ci-browser.yml build
+      - run: docker compose -p aidlc-ci -f docker-compose.yml -f docker-compose.ci-browser.yml up -d --wait --wait-timeout 60
       - run: bun run e2e:docker
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-browser-failure
+          path: test-results/docker
+          retention-days: 1
       - if: always()
-        run: docker compose -p aidlc-ci logs --tail=40 && docker compose -p aidlc-ci down
+        run: docker compose -p aidlc-ci -f docker-compose.yml -f docker-compose.ci-browser.yml logs --tail=40 && docker compose -p aidlc-ci -f docker-compose.yml -f docker-compose.ci-browser.yml down

@@ -2,7 +2,7 @@
   "type": "result",
   "subtype": "success",
   "is_error": false,
-  "result": "## 要件を開き直しました（合成 fixture）\n\n1. 要件を承認する\n2. 内容を修正する\n\n<!-- fixture:reopen -->",
+  "result": "## 要件を開き直しました（合成 fixture）\n\n現在の要件を承認しますか？\n\n1. 要件を承認する\n2. 内容を修正する\n\n<!-- fixture:reopen -->",
   "total_cost_usd": 0.01,
   "num_turns": 1,
   "permission_denials": [],

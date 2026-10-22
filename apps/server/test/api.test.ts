@@ -198,7 +198,7 @@ test("FakeRunner API: create → typed send → persisted result; private paths 
       .projects,
   ).toHaveLength(0);
 });
-test("I1: typed text is only trimmed; actions are exactly the fixed strings and options use last contiguous block", () => {
+test("I1: typed text is only trimmed; actions are exactly the fixed strings and options use the terminal explicit question", () => {
   expect(
     toPrompt({ origin: "typed", text: "  -flag\n漢字  " }).promptText,
   ).toBe("-flag\n漢字");
@@ -217,7 +217,7 @@ test("I1: typed text is only trimmed; actions are exactly the fixed strings and 
     expect(toPrompt({ origin: "action", action }).promptText).toBe(
       prompt ?? "",
     );
-  const options = "1. 古い\n2. 質問\n\n文章\n1. 最後\n2. 戻る";
+  const options = "1. 古い\n2. 質問\n\n次の質問？\n1. 最後\n2. 戻る";
   expect(extractOptions(options).map((option) => option.label)).toEqual([
     "1. 最後",
     "2. 戻る",
@@ -231,6 +231,122 @@ test("I1: typed text is only trimmed; actions are exactly the fixed strings and 
     toPrompt({ origin: "typed", text: "x".repeat(20001) }),
   ).toThrow();
 });
+test("a lettered gate supersedes an earlier numbered summary", () => {
+  const summary =
+    "## Handoff\n1. Preserve input\n2. Keep the booking unchanged";
+  for (const gate of [
+    "A. Approve\nB. Request Changes",
+    "**A. Approve**\n\n**B. Request Changes**",
+  ]) {
+    const response = `${summary}\n\n## Gate\n${gate}`;
+    expect(extractOptions(response)).toEqual([]);
+    expect(() =>
+      toPrompt(
+        { origin: "option", optionLabel: "1. Preserve input" },
+        response,
+      ),
+    ).toThrow("Option is not in the latest response");
+    expect(
+      toPrompt({ origin: "typed", text: "A. Approve" }, response).promptText,
+    ).toBe("A. Approve");
+    expect(
+      extractOptions(
+        `${response}\n\nChoose an option:\n1. Current answer\n2. Other answer`,
+      ).map((option) => option.label),
+    ).toEqual(["1. Current answer", "2. Other answer"]);
+  }
+});
+
+test("options require a terminal question and exclude Markdown examples and ambiguous blocks", () => {
+  const numbered = "1. 承認する\n2. 変更する";
+  const question = `現在の内容を承認しますか？\n${numbered}`;
+  for (const response of [
+    `## 引き継ぐ項目\n${numbered}`,
+    `Summary:\n${numbered}`,
+    `${question}\n\n補足の要約です。`,
+    `${question}\n\n1. 別の要約\n2. 次の要約`,
+    `${question}\n\n3. 孤立した項目`,
+    `選択肢:\n3. 承認する\n4. 変更する`,
+    `選択肢:\n1. 承認する\n3. 変更する`,
+    `選択肢:\n\n\`\`\`markdown\n${numbered}\n\`\`\``,
+    `選択肢:\n\n~~~\n${numbered}\n~~~`,
+    `選択肢:\n\n\`\`\`\`\n\`\`\`\n${numbered}\n\`\`\`\``,
+    `選択肢:\n\n    1. 承認する\n    2. 変更する`,
+    `選択肢:\n\n> 1. 承認する\n> 2. 変更する`,
+    `> 引用した質問？\n${numbered}`,
+    `    コード内の質問？\n${numbered}`,
+    `選択肢:\n\n| 番号 | 内容 |\n| --- | --- |\n| 1. | 承認する |\n| 2. | 変更する |`,
+    `選択肢:\n\n番号 | 内容\n--- | ---\n1. 承認する | A\n2. 変更する | B`,
+    `${question}\n\n> 1. 引用\n> 2. 引用`,
+    `${question}\n\n\`\`\`\n1. 例\n2. 例\n\`\`\``,
+    `${question}\n\nA. Approve\nB. Request Changes`,
+  ]) {
+    expect(extractOptions(response)).toEqual([]);
+    expect(() =>
+      toPrompt({ origin: "option", optionLabel: "1. 承認する" }, response),
+    ).toThrow();
+    expect(
+      toPrompt({ origin: "typed", text: "A. Approve" }, response).promptText,
+    ).toBe("A. Approve");
+  }
+  for (const response of [
+    numbered,
+    question,
+    `${question}\n\n<!-- hidden fixture marker -->`,
+    `1. 旧回答\n2. 旧回答\n\n## 選択肢\n${numbered}`,
+    `~~~\n1. 例\n2. 例\n~~~\n\n**現在の質問？**\n${numbered}`,
+  ]) {
+    expect(extractOptions(response).map((option) => option.label)).toEqual(
+      numbered.split("\n"),
+    );
+    expect(
+      toPrompt({ origin: "option", optionLabel: "1. 承認する" }, response)
+        .promptText,
+    ).toBe("1");
+  }
+});
+
+test("a numbered summary cannot admit an option turn at a later lettered gate", async () => {
+  let calls = 0;
+  const f = await setup({
+    async run() {
+      calls++;
+      return {
+        ...success(),
+        resultText:
+          "## Handoff\n1. Preserve input\n2. Keep the booking unchanged\n\n## Gate\n**A. Approve**\n\n**B. Request Changes**",
+      };
+    },
+  });
+  expect((await (await f.request("/api/health")).json()).runner).toBe("fake");
+  const id = await f.create();
+  const first = await f.request(`/api/projects/${id}/turns`, {
+    json: { origin: "typed", text: "Show the current gate" },
+  });
+  expect(first.status).toBe(202);
+  await f.turns.wait((await first.json()).turn.id);
+  const expectedContext = await (
+    await f.request(`/api/projects/${id}/context`)
+  ).json();
+  const rejected = await f.request(`/api/projects/${id}/turns`, {
+    json: {
+      origin: "option",
+      optionLabel: "1. Preserve input",
+      expectedContext,
+    },
+  });
+  expect(rejected.status).toBe(400);
+  expect(f.store.listTurns(id)).toHaveLength(1);
+  expect(calls).toBe(1);
+  const explicit = await f.request(`/api/projects/${id}/turns`, {
+    json: { origin: "typed", text: "A. Approve", expectedContext },
+  });
+  expect(explicit.status).toBe(202);
+  const turn = (await explicit.json()).turn;
+  await f.turns.wait(turn.id);
+  expect(f.store.getTurn(turn.id)?.promptText).toBe("A. Approve");
+});
+
 test("all project endpoints enforce owner and child-resource project membership", async () => {
   const f = await setup();
   const id = await f.create();
@@ -741,4 +857,238 @@ test("reconnect admission failure rolls the UUID change back atomically", async 
   ).toBe(402);
   expect(f.store.getProject(id)?.claudeSessionId).toBe(before);
   expect(f.store.listTurns(id)).toHaveLength(2);
+});
+
+test("V2 context: same option labels from stale questions are rejected after the earlier turn finishes", async () => {
+  let calls = 0;
+  const f = await setup({ run: async () => success(++calls) });
+  const id = await f.create();
+  const url = `/api/projects/${id}`;
+  const context = async () => (await f.request(`${url}/context`)).json();
+  const old = await context();
+  const first = await f.request(`${url}/turns`, {
+    json: { origin: "typed", text: "first", expectedContext: old },
+  });
+  await f.turns.wait((await first.json()).turn.id);
+  const tab1 = await context();
+  const tab2 = await context();
+  expect(tab1).toEqual(tab2);
+  const second = await f.request(`${url}/turns`, {
+    json: { origin: "option", optionLabel: "1. 続ける", expectedContext: tab1 },
+  });
+  expect(second.status).toBe(202);
+  await f.turns.wait((await second.json()).turn.id);
+  const stale = await f.request(`${url}/turns`, {
+    json: { origin: "option", optionLabel: "1. 続ける", expectedContext: tab2 },
+  });
+  expect(stale.status).toBe(409);
+  expect((await stale.json()).code).toBe("CONTEXT_STALE");
+  expect(calls).toBe(2);
+  expect(f.store.listTurns(id)).toHaveLength(2);
+  expect((await f.request(`${url}/context`, { user: "other" })).status).toBe(
+    404,
+  );
+  expect(
+    (await f.request(`${url}/mockups?intent=round-1`, { user: "other" }))
+      .status,
+  ).toBe(404);
+  expect((await f.request(`${url}/mockups?intent=round-1`)).status).toBe(200);
+  expect(
+    (
+      await f.request(`${url}/turns`, {
+        json: {
+          origin: "typed",
+          text: "x",
+          expectedContext: { ...tab2, unknown: 1 },
+        },
+      })
+    ).status,
+  ).toBe(400);
+});
+
+test("V2 mock revision requires exact reference bytes and keeps the visible body unchanged", async () => {
+  let calls = 0;
+  const f = await setup({ run: async () => success(++calls) });
+  const id = await f.create();
+  const project = f.store.getProject(id);
+  if (!project) throw new Error("project missing");
+  const { hashBytes } = await import("../src/reader/mockups.ts");
+  const dir = join(
+    project.workspaceDir,
+    "aidlc/spaces/default/intents/round-1/ideation/rough-mockups",
+  );
+  await mkdir(dir, { recursive: true });
+  const html = "<h1>合成予約画面</h1>";
+  const sha256 = hashBytes(new TextEncoder().encode(html));
+  const mapping = {
+    screen: "SCREEN-1",
+    state: "STATE-1",
+    ac: "AC-001",
+    asset: "index.html",
+    check: "確認",
+  };
+  await writeFile(join(dir, "index.html"), html);
+  await writeFile(
+    join(dir, "ui-poc-rough-contract.md"),
+    `\`\`\`ui-poc-contract\n${JSON.stringify({ schema: 2, stage: "rough-mockups", assets: [{ path: "index.html", sha256 }], mappings: [mapping] })}\n\`\`\``,
+  );
+  const url = `/api/projects/${id}`;
+  const execution = await (await f.request(`${url}/context`)).json();
+  const snapshot = await (
+    await f.request(`${url}/mockups?intent=round-1`)
+  ).json();
+  const reference = {
+    intent: "round-1",
+    stage: "rough-mockups",
+    contractSha256: snapshot.contracts[0].sha256,
+    assets: [{ path: "index.html", sha256 }],
+    mapping,
+  };
+  const invalid = await f.request(`${url}/turns`, {
+    json: {
+      origin: "typed",
+      text: "変更",
+      purpose: "mockup_revision",
+      expectedContext: execution,
+    },
+  });
+  expect(invalid.status).toBe(400);
+  const visible = "  この画面について相談\n変更したい点: 日本語  ";
+  const accepted = await f.request(`${url}/turns`, {
+    json: {
+      origin: "typed",
+      text: visible,
+      purpose: "mockup_revision",
+      expectedContext: { ...execution, reference },
+    },
+  });
+  expect(accepted.status).toBe(202);
+  const turn = (await accepted.json()).turn;
+  await f.turns.wait(turn.id);
+  expect(f.store.getTurn(turn.id)?.promptText).toBe(visible);
+  const current = await (await f.request(`${url}/context`)).json();
+  await writeFile(join(dir, "index.html"), `${html}changed`);
+  const stale = await f.request(`${url}/turns`, {
+    json: {
+      origin: "typed",
+      text: visible,
+      purpose: "mockup_revision",
+      expectedContext: { ...current, reference },
+    },
+  });
+  expect(stale.status).toBe(409);
+  expect(calls).toBe(1);
+  expect(
+    (
+      await f.request(`${url}/mockups?intent=round-1`, {
+        headers: { Origin: "https://example.invalid" },
+      })
+    ).status,
+  ).toBe(403);
+});
+
+test("V2 HTTP bounds apply to the entire visible text, including surrounding whitespace", async () => {
+  const f = await setup();
+  const id = await f.create();
+  const expectedContext = await (
+    await f.request(`/api/projects/${id}/context`)
+  ).json();
+  const response = await f.request(`/api/projects/${id}/turns`, {
+    json: { origin: "typed", text: ` ${"x".repeat(20_000)} `, expectedContext },
+  });
+  expect(response.status).toBe(400);
+  expect(f.store.listTurns(id)).toHaveLength(0);
+});
+
+test("V2 option parsing freezes the response after the request body completes", async () => {
+  let cost = 0;
+  const f = await setup({ run: async () => success(++cost) });
+  const id = await f.create();
+  const url = `/api/projects/${id}`;
+  const first = await f.request(`${url}/turns`, {
+    json: { origin: "typed", text: "first" },
+  });
+  await f.turns.wait((await first.json()).turn.id);
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c;
+    },
+  });
+  const pending = f.app.request(`http://127.0.0.1:8787${url}/turns`, {
+    method: "POST",
+    headers: { "X-AIDLC-User": "dev", "Content-Type": "application/json" },
+    body: stream,
+  });
+  await Bun.sleep(0);
+  const next = f.store.admitTurn(
+    {
+      projectId: id,
+      submittedBy: f.store.getProject(id)?.ownerId ?? "missing",
+      origin: "typed",
+      promptText: "other tab",
+    },
+    { turnBudgetUsd: 1, projectBudgetUsd: 10, logDir: f.dataDir },
+  );
+  f.store.markRunning(next.id);
+  f.store.finishTurn(next.id, {
+    ...success(++cost),
+    resultText: "1. 別の質問\n2. 最新の質問への回答",
+  });
+  const expectedContext = await (await f.request(`${url}/context`)).json();
+  controller?.enqueue(
+    new TextEncoder().encode(
+      JSON.stringify({
+        origin: "option",
+        optionLabel: "2. 最新の質問への回答",
+        expectedContext,
+      }),
+    ),
+  );
+  controller?.close();
+  const response = await pending;
+  expect(response.status).toBe(202);
+  const result = (await response.json()).turn;
+  await f.turns.wait(result.id);
+  expect(f.store.getTurn(result.id)?.promptText).toBe("2");
+});
+
+test("unreadable execution state during guarded admission is stale, not a malformed user body", async () => {
+  const f = await setup();
+  const id = await f.create();
+  const expectedContext = await (
+    await f.request(`/api/projects/${id}/context`)
+  ).json();
+  const project = f.store.getProject(id);
+  if (!project) throw new Error("missing project");
+  await writeFile(
+    join(project.workspaceDir, "aidlc/spaces/default/intents/intents.json"),
+    "[",
+  );
+  const response = await f.request(`/api/projects/${id}/turns`, {
+    json: { origin: "typed", text: "保持する本文", expectedContext },
+  });
+  expect(response.status).toBe(409);
+  expect((await response.json()).code).toBe("CONTEXT_STALE");
+  expect(f.store.listTurns(id)).toHaveLength(0);
+});
+
+test("context-aware reopen requires a current execution round and does not start an old intent", async () => {
+  const f = await setup();
+  const id = await f.create();
+  const project = f.store.getProject(id);
+  if (!project) throw new Error("missing project");
+  await writeFile(
+    join(project.workspaceDir, "aidlc/spaces/default/intents/active-intent"),
+    "",
+  );
+  const expectedContext = await (
+    await f.request(`/api/projects/${id}/context`)
+  ).json();
+  expect(expectedContext.activeIntent).toBeNull();
+  const response = await f.request(`/api/projects/${id}/turns`, {
+    json: { origin: "action", action: "reopen_requirements", expectedContext },
+  });
+  expect(response.status).toBe(409);
+  expect(f.store.listTurns(id)).toHaveLength(0);
 });

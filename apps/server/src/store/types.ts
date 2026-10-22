@@ -1,3 +1,4 @@
+import type { ExpectedContext } from "@aidlc/shared";
 import type { TurnOutcome, TurnStatus } from "../runner/types.ts";
 export type Project = {
   executionMode: "unknown" | "fake" | "claude";
@@ -38,7 +39,11 @@ export type Turn = {
 export type SubmitTurn = Pick<
   Turn,
   "projectId" | "submittedBy" | "origin" | "promptText"
-> & { action?: string };
+> & {
+  action?: string;
+  expectedContext?: ExpectedContext;
+  visualAttachmentId?: string;
+};
 export class TurnAdmissionError extends Error {
   constructor(
     public readonly status: 402 | 404 | 409,

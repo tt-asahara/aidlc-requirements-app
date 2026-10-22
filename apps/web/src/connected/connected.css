@@ -719,3 +719,324 @@
   color: #427056;
   font-size: 12px;
 }
+
+/* V2: conversation, primary mock/document canvas, logical document navigation. */
+.connected-workspace.v2-workspace {
+  grid-template-columns: minmax(280px, 0.85fr) minmax(360px, 1.8fr) minmax(
+      210px,
+      0.6fr
+    );
+  align-items: start;
+  min-height: calc(100vh - 180px);
+}
+.v2-workspace > * {
+  min-width: 0;
+}
+.v2-workspace .conversation-pane {
+  border-right: 1px solid #d6e0dc;
+}
+.v2-workspace .progress-pane {
+  width: auto;
+  padding: 14px;
+  border: 0;
+}
+.v2-workspace summary {
+  cursor: pointer;
+  font-weight: 650;
+  padding: 8px 0;
+}
+.mockup-main {
+  padding: clamp(16px, 2vw, 30px);
+  overflow-wrap: anywhere;
+}
+.mockup-main h2 {
+  font-size: 21px;
+  margin: 18px 0;
+}
+.mockup-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.mockup-main label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 8px 12px 8px 0;
+  max-width: 100%;
+}
+.mockup-main select {
+  max-width: 100%;
+  min-height: 40px;
+  padding: 7px;
+  font: inherit;
+  background: #fbfdfc;
+  border: 1px solid #a3bbb0;
+  color: inherit;
+}
+.contract-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding: 12px 0;
+  border-block: 1px solid #d6e0dc;
+  margin: 16px 0;
+}
+.contract-status small {
+  flex-basis: 100%;
+}
+.mockup-main .html-preview iframe {
+  width: 100%;
+  min-height: 520px;
+  border: 1px solid #c4d4cc;
+  background: #fff;
+}
+.document-nav {
+  padding: 22px 16px;
+  border-left: 1px solid #d6e0dc;
+  overflow-wrap: anywhere;
+}
+.document-nav h2 {
+  margin-top: 0;
+}
+.document-nav button {
+  text-align: left;
+}
+.region-tabs {
+  display: none;
+}
+.project-bar {
+  flex-wrap: wrap;
+  height: auto;
+}
+.connected-app :focus-visible {
+  outline: 3px solid #a8591c;
+  outline-offset: 3px;
+}
+@media (max-width: 1100px) {
+  .region-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 16px;
+  }
+  .connected-workspace.v2-workspace {
+    display: block;
+  }
+  .v2-workspace > * {
+    display: none;
+  }
+  .v2-workspace[data-region="conversation"] > .conversation-pane,
+  .v2-workspace[data-region="mockup"] > .mockup-main,
+  .v2-workspace[data-region="documents"] > .document-nav {
+    display: block;
+    width: 100%;
+  }
+  .v2-workspace .turn-timeline {
+    max-height: none;
+  }
+  .connected-header {
+    height: auto;
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .connected-app * {
+    scroll-behavior: auto;
+  }
+}
+@media (min-width: 1101px) {
+  .connected-workspace.v2-workspace {
+    height: calc(100dvh - 186px);
+    min-height: 600px;
+  }
+  .v2-workspace .conversation-pane {
+    height: 100%;
+    overflow: hidden;
+  }
+  .v2-workspace .progress-pane {
+    flex-shrink: 0;
+    max-height: 35%;
+    overflow: auto;
+  }
+  .v2-workspace .connected-composer {
+    flex-shrink: 0;
+  }
+  .v2-workspace .mockup-main,
+  .v2-workspace .document-nav {
+    max-height: 100%;
+    overflow: auto;
+  }
+}
+
+.visual-capture {
+  margin: 18px 0;
+  padding: 12px;
+  border: 1px solid #bccbb6;
+  border-radius: 8px;
+  background: #f7faf4;
+}
+.visual-capture p,
+.visual-draft-preview p {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.visual-capture-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+.visual-capture-controls label {
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+}
+.visual-capture-controls input {
+  width: 90px;
+  padding: 6px;
+}
+.visual-capture .annotation-surface {
+  margin: 10px 0;
+}
+.visual-selection-actions {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+  background: #f7faf4;
+}
+.connected-app .visual-selection-actions > span {
+  flex: 1 1 100%;
+  font-size: 12px;
+}
+.visual-capture details,
+.visual-draft-preview details {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  margin: 8px 0;
+}
+.visual-capture summary,
+.visual-draft-preview summary {
+  cursor: pointer;
+}
+.visual-before img {
+  width: 100%;
+  height: auto;
+}
+.visual-draft-preview {
+  padding: 12px;
+  border: 1px solid #a8bda0;
+  border-radius: 8px;
+  background: #f6faf1;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.visual-draft-preview img {
+  width: 100%;
+  height: 180px;
+  object-fit: contain;
+  background: #fff;
+}
+.connected-app .visual-draft-preview > span,
+.visual-draft-preview strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.visual-draft-preview[data-stale="true"] {
+  border-color: #c08640;
+  background: #fff3e5;
+}
+
+.connected-composer > .visual-draft-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.v2-workspace .connected-composer {
+  max-height: 72%;
+  overflow-y: auto;
+}
+@media (min-width: 1101px) {
+  .v2-workspace .conversation-pane:has(.visual-draft-preview) .progress-pane {
+    max-height: 16%;
+  }
+}
+.connected-app .annotation-surface {
+  padding: 0;
+}
+.workspace-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 20px;
+  border-bottom: 1px solid #d6e0dc;
+  background: #f6f9f7;
+}
+.workspace-controls small {
+  color: #536b61;
+}
+.change-impact {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid #ccdcd3;
+  border-radius: 8px;
+}
+.change-impact label,
+.change-impact small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.change-impact textarea {
+  width: 100%;
+  min-height: 90px;
+}
+.change-impact li {
+  margin: 8px 0;
+}
+@media (min-width: 1101px) {
+  .connected-workspace.v2-workspace[data-left-fold="true"] {
+    grid-template-columns: minmax(360px, 1fr) minmax(210px, 0.3fr);
+  }
+  .connected-workspace.v2-workspace[data-right-fold="true"] {
+    grid-template-columns: minmax(280px, 0.35fr) minmax(360px, 1fr);
+  }
+  .connected-workspace.v2-workspace[data-left-fold="true"][data-right-fold="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .v2-workspace[data-left-fold="true"] > .conversation-pane,
+  .v2-workspace[data-right-fold="true"] > .document-nav {
+    display: none;
+  }
+}
+@media (max-width: 1100px) {
+  .workspace-controls {
+    display: none;
+  }
+}
+.mockup-main {
+  padding: 16px;
+}
+.mockup-main h2 {
+  font-size: 18px;
+  margin: 10px 0;
+}
+.mockup-main .mapping-check {
+  margin: 4px 0;
+  font-size: 12px;
+}
+.mockup-main .mapping-check summary {
+  padding: 4px 0;
+}
+.mockup-main > .contract-status {
+  margin: 8px 0;
+}

@@ -4,6 +4,7 @@ export type TurnInput = {
   claudeSessionId: string;
   isFirstTurn: boolean;
   prompt: string;
+  images?: import("../visual/snapshots.ts").RunnerImage[];
   allowedTools: string[];
   model: string;
   maxBudgetUsd: number;

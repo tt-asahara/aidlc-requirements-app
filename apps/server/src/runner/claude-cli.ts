@@ -1,6 +1,8 @@
-import { mkdir, open, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, open, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { validatePng } from "../visual/snapshots.ts";
 import { makeRedactor } from "./redact.ts";
 import { StreamJsonParser } from "./stream-json.ts";
 import { failedOutcome, type TurnInput, type TurnRunner } from "./types.ts";
@@ -18,6 +20,8 @@ const envKeys = [
   "AWS_CONFIG_FILE",
   "AWS_SHARED_CREDENTIALS_FILE",
   "ANTHROPIC_MODEL",
+  "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
   "UI_POC_BROWSER_EXECUTABLE",
 ] as const;
 export function claudeEnv(
@@ -55,9 +59,47 @@ export function claudeArgv(bin: string, input: TurnInput): string[] {
     ...(input.allowedTools.length
       ? ["--allowedTools", ...input.allowedTools]
       : []),
-    "--",
-    input.prompt,
+    ...(input.images?.length
+      ? ["--input-format", "stream-json"]
+      : ["--", input.prompt]),
   ];
+}
+export function imageMessage(input: TurnInput) {
+  if (!input.images?.length || input.images.length !== 1)
+    throw new Error("Exactly one image is required");
+  const image = input.images[0];
+  if (
+    image?.mediaType !== "image/png" ||
+    image.data.length > 2_800_000 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)
+  )
+    throw new Error("Invalid image input");
+  const bytes = Buffer.from(image.data, "base64");
+  validatePng(bytes, image.width, image.height);
+  if (
+    bytes.toString("base64") !== image.data ||
+    createHash("sha256").update(bytes).digest("hex") !== image.sha256
+  )
+    throw new Error("Image hash mismatch");
+  return `${JSON.stringify({
+    type: "user",
+    session_id: input.claudeSessionId,
+    parent_tool_use_id: null,
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: "image/png",
+            data: image.data,
+          },
+        },
+        { type: "text", text: input.prompt },
+      ],
+    },
+  })}\n`;
 }
 const groupExists = (pid: number) => {
   try {
@@ -99,7 +141,7 @@ export class ClaudeCliRunner implements TurnRunner {
     const parser = new StreamJsonParser(onEvent);
     let stop: "cancelled" | "timed_out" | null = null;
     let cleanup: Promise<void> | undefined;
-    let child: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined;
+    let child: Bun.Subprocess<"pipe", "pipe", "pipe"> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const terminate = () => {
       if (!child || cleanup) return;
@@ -132,6 +174,7 @@ export class ClaudeCliRunner implements TurnRunner {
       files.push(stdout);
       const stderr = await open(`${input.logPath}.err`, "wx", 0o600);
       files.push(stderr);
+      const streamInput = input.images?.length ? imageMessage(input) : null;
       child = Bun.spawn(
         [
           process.execPath,
@@ -146,17 +189,40 @@ export class ClaudeCliRunner implements TurnRunner {
           env: claudeEnv(input.claudeHomeDir, this.env),
           detached: true,
           ipc: () => {},
-          stdin: "ignore",
+          stdin: "pipe",
           stdout: "pipe",
           stderr: "pipe",
         },
       );
+      if (input.images?.length)
+        await writeFile(
+          `${input.logPath}.input.json`,
+          JSON.stringify({
+            format: "stream-json",
+            promptSha256: createHash("sha256")
+              .update(input.prompt)
+              .digest("hex"),
+            images: input.images.map((i) => ({
+              mediaType: i.mediaType,
+              sha256: i.sha256,
+              width: i.width,
+              height: i.height,
+              bytes: Buffer.from(i.data, "base64").length,
+            })),
+          }),
+          { flag: "wx", mode: 0o600 },
+        );
       signal.addEventListener("abort", cancel, { once: true });
       if (signal.aborted) cancel();
       timer = setTimeout(() => {
         if (!stop) stop = "timed_out";
         terminate();
       }, input.timeoutMs);
+      const inputWritten = (async () => {
+        child.stdin.write(streamInput ?? "");
+        await child.stdin.flush();
+        child.stdin.end();
+      })();
       const consume = async (
         stream: ReadableStream<Uint8Array>,
         output: typeof stdout,
@@ -214,8 +280,12 @@ export class ClaudeCliRunner implements TurnRunner {
         if (child && groupExists(child.pid)) terminate();
         return code;
       });
-      drains = Promise.allSettled([exited, checkedStreams]);
-      const [exitCode] = await Promise.all([exited, checkedStreams]);
+      drains = Promise.allSettled([exited, checkedStreams, inputWritten]);
+      const [exitCode] = await Promise.all([
+        exited,
+        checkedStreams,
+        inputWritten,
+      ]);
       if (cleanup) await cleanup;
       const outcome = parser.finish(exitCode);
       return stop

@@ -147,6 +147,18 @@ export class SqliteStore implements Store {
             .get(project.id)
         )
           throw new TurnAdmissionError(409, "実行中です");
+        if (input.expectedContext) {
+          const latest = this.listTurns(project.id).at(-1);
+          const expected = input.expectedContext.latestTurn;
+          if (
+            (latest?.id ?? null) !== (expected?.id ?? null) ||
+            (latest?.seq ?? null) !== (expected?.seq ?? null)
+          )
+            throw new TurnAdmissionError(
+              409,
+              "CONTEXT_STALE: 対象ターンが更新されました。",
+            );
+        }
         const cost = this.projectCosts(project.id);
         const remaining =
           limits.projectBudgetUsd - cost.reportedUsd - cost.reservedUsd;

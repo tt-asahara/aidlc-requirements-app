@@ -1,4 +1,4 @@
-import type { ArtifactEntry } from "@aidlc/shared";
+import type { ArtifactEntry, MockupContract } from "@aidlc/shared";
 import { parseCoverage } from "@aidlc/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -10,12 +10,14 @@ import {
   loadArtifact,
 } from "../api/artifacts.ts";
 import { ApiError, api } from "../api/client.ts";
+import { type PreviewCapture, requestScene } from "./dynamic-scene.ts";
 
 type Context = {
   user: string;
   projectId: string;
   space: string;
   open: (path: string) => void;
+  captureReady?: (capture: PreviewCapture | null) => void;
 };
 export function ArtifactMarkdown({
   text,
@@ -162,19 +164,25 @@ function Tree({
     retry: false,
   });
   return files.error ? (
-    <p role="alert">{files.error.message}</p>
+    <p>
+      {files.error instanceof ApiError && files.error.status === 404
+        ? "未生成です。必要な工程の後に確認してください。"
+        : files.error.message}
+    </p>
   ) : files.isPending ? (
     <p className="muted">一覧を読み込み中…</p>
   ) : (
     <ul className="connected-file-tree">
-      {files.data.files.map((file) => (
-        <TreeEntry
-          key={file.path}
-          file={file}
-          context={context}
-          selected={selected}
-        />
-      ))}
+      {files.data.files
+        .filter((file) => file.kind === "directory" || /\.md$/i.test(file.name))
+        .map((file) => (
+          <TreeEntry
+            key={file.path}
+            file={file}
+            context={context}
+            selected={selected}
+          />
+        ))}
     </ul>
   );
 }
@@ -230,6 +238,8 @@ function HtmlPreview({
   context: Context;
   source: string;
 }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [channel] = useState(() => crypto.randomUUID());
   const dir = path.split("/").slice(0, -1).join("/");
   const token = useQuery({
     queryKey: ["preview", context.user, context.projectId, context.space, path],
@@ -245,6 +255,15 @@ function HtmlPreview({
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+  const ready = context.captureReady;
+  useEffect(() => {
+    ready?.(() => {
+      if (!frame.current)
+        return Promise.reject(new Error("プレビューがありません。"));
+      return requestScene(frame.current, channel);
+    });
+    return () => ready?.(null);
+  }, [ready, channel]);
   if (!dir)
     return (
       <>
@@ -268,10 +287,11 @@ function HtmlPreview({
         <p role="alert">{token.error.message}</p>
       ) : token.data ? (
         <iframe
+          ref={frame}
           title="HTML モックアップ"
           sandbox="allow-scripts"
           referrerPolicy="no-referrer"
-          src={`${token.data.basePath}${path.split("/").map(encodeURIComponent).join("/")}`}
+          src={`${token.data.basePath}${path.split("/").map(encodeURIComponent).join("/")}${ready ? `?aidlcCapture=${channel}` : ""}`}
         />
       ) : (
         <p>プレビューを準備中…</p>
@@ -279,7 +299,13 @@ function HtmlPreview({
     </div>
   );
 }
-function FileView({ path, context }: { path: string; context: Context }) {
+export function FileView({
+  path,
+  context,
+}: {
+  path: string;
+  context: Context;
+}) {
   const data = useQuery({
     queryKey: [
       "project",
@@ -453,5 +479,160 @@ export function ArtifactPane({
         <p>プロジェクトの準備後に成果物を表示します。</p>
       )}
     </aside>
+  );
+}
+
+export function LogicalDocuments({
+  user,
+  projectId,
+  space,
+  selected,
+  intent,
+  contracts,
+  open,
+}: {
+  user: string;
+  projectId: string;
+  space: string;
+  selected: string;
+  intent: string;
+  contracts: MockupContract[];
+  open: (path: string) => void;
+}) {
+  const context = { user, projectId, space, open };
+  return (
+    <aside className="document-nav" aria-label="設計書ナビゲーション">
+      <p className="eyebrow">DESIGN DOCUMENTS</p>
+      <h2>成果物一覧</h2>
+      {!!intent && (
+        <>
+          <details>
+            <summary>画面原本 · 閲覧ラウンド</summary>
+            <p>HTMLモックは工程の原本です。統合文書とは別です。</p>
+            {contracts.map((c) => (
+              <div key={c.stage}>
+                <strong>
+                  {c.stage === "rough-mockups" ? "1.6 rough" : "2.5 refined"}
+                </strong>
+                <button type="button" onClick={() => open(c.path)}>
+                  契約原本
+                </button>
+                {[
+                  ...new Set(
+                    c.assets
+                      .map((a) => a.path)
+                      .filter((p) => /\.html?$/i.test(p)),
+                  ),
+                ].map((p) => (
+                  <button
+                    type="button"
+                    key={p}
+                    onClick={() =>
+                      open(`${c.path.slice(0, c.path.lastIndexOf("/"))}/${p}`)
+                    }
+                  >
+                    {p}
+                  </button>
+                ))}
+                {!c.assets.length && <p>HTML原本は未生成／未確認です。</p>}
+              </div>
+            ))}
+          </details>
+          <details>
+            <summary>要件・User Stories・正式AC</summary>
+            {[
+              "requirements-analysis/requirements.md",
+              "user-stories/stories.md",
+            ].map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => open(`intents/${intent}/inception/${p}`)}
+              >
+                {p.endsWith("stories.md") ? "User Stories・正式AC" : "要件"}
+              </button>
+            ))}
+          </details>
+        </>
+      )}
+      <h3>全ラウンドの統合設計書</h3>
+      <button type="button" onClick={() => open("design-document/README.md")}>
+        設計書の概要
+      </button>
+      <ArtifactDownloads user={user} projectId={projectId} />
+      <p className="muted">
+        全ラウンドの統合文書 · 原本との対応は関連資料／不明
+      </p>
+      {[
+        ["00_設計管理", "設計管理"],
+        ["01_システム化構想", "システム化構想"],
+        ["02_基本設計", "基本設計"],
+        ["03_詳細設計", "詳細設計"],
+        ["90_QA", "QA（引用元がある場合）"],
+      ].map(([dir, label]) => (
+        <details key={dir}>
+          <summary>{label}</summary>
+          <Tree
+            path={`design-document/${dir}`}
+            context={context}
+            selected={selected}
+          />
+        </details>
+      ))}
+      <p className="muted">
+        未検討は章ごとの状態です。後工程の保留を含みます。
+      </p>
+    </aside>
+  );
+}
+
+function ArtifactDownloads({
+  user,
+  projectId,
+}: {
+  user: string;
+  projectId: string;
+}) {
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const download = async (target: string) => {
+    if (pending) return;
+    setPending(true);
+    setError("");
+    try {
+      const response = await artifactResponse(
+        user,
+        `/api/projects/${projectId}/download?target=${target}`,
+      );
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `aidlc-${projectId}-${target}.zip`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "ZIP を取得できません");
+    } finally {
+      setPending(false);
+    }
+  };
+  return (
+    <div className="zip-actions">
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => void download("design-document")}
+      >
+        設計書 ZIP
+      </button>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => void download("all")}
+      >
+        全成果物 ZIP
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </div>
   );
 }
