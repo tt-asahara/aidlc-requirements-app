@@ -377,3 +377,91 @@ test("dynamic capture binds original bytes and keeps DOM hash separate", async (
   ).rejects.toThrow();
   expect(s.calls()).toBe(0);
 });
+
+test("related-document proposal binds missing/existing versions and rejects a concurrent edit before admission", async () => {
+  const s = await setup();
+  const response = await s.request("p1/change-impact?intent=round-1");
+  expect(response.status).toBe(200);
+  const impact = await response.json();
+  expect(impact.documents).toHaveLength(6);
+  expect(impact.documents[0].sha256).toBeNull();
+  expect(
+    (await s.request("p1/change-impact?intent=round-1", undefined, "other"))
+      .status,
+  ).toBe(404);
+  const expected = {
+    ...s.context,
+    documents: impact.documents.map(
+      ({ path, sha256 }: { path: string; sha256: string | null }) => ({
+        path,
+        sha256,
+      }),
+    ),
+  };
+  const reqdir = join(
+    s.project.workspaceDir,
+    "aidlc/spaces/default/intents/round-1/inception/requirements-analysis",
+  );
+  await mkdir(reqdir, { recursive: true });
+  await writeFile(join(reqdir, "requirements.md"), "新しい要件");
+  const sent = await s.request("p1/turns", {
+    origin: "typed",
+    text: "反映案だけ示してください",
+    purpose: "mockup_revision",
+    expectedContext: expected,
+  });
+  expect(sent.status).toBe(409);
+  expect(await sent.text()).toContain("CONTEXT_STALE");
+  expect(s.store.listTurns("p1")).toHaveLength(0);
+  expect(s.calls()).toBe(0);
+  const forged = {
+    ...expected,
+    documents: expected.documents.map(
+      (d: { path: string; sha256: string | null }, i: number) =>
+        i === 0 ? { ...d, path: "../secret" } : d,
+    ),
+  };
+  expect(
+    (
+      await s.request("p1/turns", {
+        origin: "typed",
+        text: "x",
+        expectedContext: forged,
+      })
+    ).status,
+  ).toBe(400);
+});
+
+test("pre-CLI related-document creation is stale and costs zero without invoking the runner", async () => {
+  const f = await setup();
+  const impact = await (
+    await f.request("p1/change-impact?intent=round-1")
+  ).json();
+  const expected = {
+    ...f.context,
+    documents: impact.documents.map(
+      ({ path, sha256 }: { path: string; sha256: string | null }) => ({
+        path,
+        sha256,
+      }),
+    ),
+  };
+  const turn = f.turns.submit({
+    projectId: "p1",
+    submittedBy: f.project.ownerId,
+    origin: "typed",
+    promptText: "変更案だけ提示",
+    expectedContext: expected,
+  });
+  const dir = join(
+    f.project.workspaceDir,
+    "aidlc/spaces/default/intents/round-1/inception/requirements-analysis",
+  );
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, "requirements.md"), "途中更新");
+  await f.turns.wait(turn.id);
+  expect(f.calls()).toBe(0);
+  expect(f.store.getTurn(turn.id)?.errorMessage).toContain("CONTEXT_STALE");
+  expect(f.store.getTurn(turn.id)?.turnCostUsd).toBe(0);
+  expect(f.store.projectCosts("p1").reservedUsd).toBe(0);
+});

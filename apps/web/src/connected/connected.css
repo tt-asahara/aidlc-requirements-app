@@ -973,3 +973,53 @@
 .connected-app .annotation-surface {
   padding: 0;
 }
+.workspace-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 20px;
+  border-bottom: 1px solid #d6e0dc;
+  background: #f6f9f7;
+}
+.workspace-controls small {
+  color: #536b61;
+}
+.change-impact {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid #ccdcd3;
+  border-radius: 8px;
+}
+.change-impact label,
+.change-impact small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.change-impact textarea {
+  width: 100%;
+  min-height: 90px;
+}
+.change-impact li {
+  margin: 8px 0;
+}
+@media (min-width: 1101px) {
+  .connected-workspace.v2-workspace[data-left-fold="true"] {
+    grid-template-columns: minmax(360px, 1fr) minmax(210px, 0.3fr);
+  }
+  .connected-workspace.v2-workspace[data-right-fold="true"] {
+    grid-template-columns: minmax(280px, 0.35fr) minmax(360px, 1fr);
+  }
+  .connected-workspace.v2-workspace[data-left-fold="true"][data-right-fold="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .v2-workspace[data-left-fold="true"] > .conversation-pane,
+  .v2-workspace[data-right-fold="true"] > .document-nav {
+    display: none;
+  }
+}
+@media (max-width: 1100px) {
+  .workspace-controls {
+    display: none;
+  }
+}

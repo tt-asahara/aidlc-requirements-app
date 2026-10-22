@@ -108,6 +108,7 @@ export type PermissionView = {
 
 export { parseCoverage } from "./coverage.ts";
 export type {
+  ChangeImpact,
   ExecutionContext,
   ExpectedContext,
   MockupContract,

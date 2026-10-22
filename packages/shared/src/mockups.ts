@@ -32,10 +32,17 @@ export type MockupReference = {
 };
 export type ExpectedContext = ExecutionContext & {
   reference?: MockupReference;
+  documents?: { path: string; sha256: string | null }[];
 };
 export type MockupsResponse = {
   space: string;
   intent: string;
   isActive: boolean;
   contracts: MockupContract[];
+};
+
+export type ChangeImpact = {
+  intent: string;
+  space: string;
+  documents: { label: string; path: string; sha256: string | null }[];
 };

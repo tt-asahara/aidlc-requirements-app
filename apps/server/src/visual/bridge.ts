@@ -8,7 +8,7 @@ addEventListener('message', event => {
  try {
   const nodes=[document.documentElement,...document.documentElement.querySelectorAll('*')];
   if(nodes.length>5000) throw Error('DOMが5000要素を超えています。');
-  if(nodes.some(n=>n.shadowRoot) || document.querySelector('canvas,video,audio,iframe,object,embed,input[type=password],input[type=file]')) throw Error('canvas・動画・入れ子フレーム・Shadow DOM・秘密入力は撮影対象外です。');
+  if(nodes.some(n=>n.shadowRoot || n.localName.includes('-')) || document.querySelector('canvas,video,audio,iframe,object,embed,input[type=password],input[type=file]')) throw Error('canvas・動画・入れ子フレーム・Shadow DOM・秘密入力は撮影対象外です。');
   const clone=document.documentElement.cloneNode(true), copies=[clone,...clone.querySelectorAll('*')];
   nodes.forEach((node,i)=>{
    const copy=copies[i];

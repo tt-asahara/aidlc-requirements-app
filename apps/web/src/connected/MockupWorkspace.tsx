@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 import { api } from "../api/client.ts";
 import { FileView, LogicalDocuments } from "./ArtifactPane.tsx";
+import { ChangeImpact } from "./ChangeImpact.tsx";
 import type { PreviewCapture } from "./dynamic-scene.ts";
 import { VisualCapture, type VisualDraft } from "./VisualCapture.tsx";
 
@@ -23,6 +24,7 @@ export function MockupWorkspace({
   canDraft,
   canCapture,
   invalidateVisual,
+  showWorkflow,
 }: {
   user: string;
   projectId: string;
@@ -36,6 +38,7 @@ export function MockupWorkspace({
     visual?: VisualDraft,
   ) => void;
   canCapture: boolean;
+  showWorkflow: () => void;
   invalidateVisual: () => void;
   canDraft: boolean;
 }) {
@@ -181,6 +184,9 @@ export function MockupWorkspace({
             {!intent ? (
               <p>
                 ラウンドを開始すると、工程の HTML 原本をここで確認できます。
+                <button type="button" onClick={showWorkflow}>
+                  ラウンド開始の操作を開く
+                </button>
               </p>
             ) : mockups.isPending ? (
               <p role="status">契約を読み込み中…</p>
@@ -293,6 +299,33 @@ export function MockupWorkspace({
                       >
                         この画面について相談
                       </button>
+                      {isActive &&
+                        execution &&
+                        contract.sha256 &&
+                        contract.integrity === "matched" && (
+                          <ChangeImpact
+                            key={`${intent}/${stage}/${key(mapping)}`}
+                            showWorkflow={showWorkflow}
+                            user={user}
+                            projectId={projectId}
+                            enabled={canDraft}
+                            open={open}
+                            makeDraft={makeDraft}
+                            expected={{
+                              ...execution,
+                              reference: {
+                                intent,
+                                stage,
+                                contractSha256: contract.sha256,
+                                assets: contract.assets.map((a) => ({
+                                  path: a.path,
+                                  sha256: a.actualSha256 ?? "",
+                                })),
+                                mapping,
+                              },
+                            }}
+                          />
+                        )}
                       {!isActive && (
                         <p>
                           過去ラウンドは閲覧専用です。新しい要件への引用は、返答欄に参照元を明記してください。
@@ -316,6 +349,8 @@ export function MockupWorkspace({
         projectId={projectId}
         space={context.space}
         selected={selectedFile}
+        intent={intent}
+        contracts={mockups.data?.contracts ?? []}
         open={open}
       />
     </>

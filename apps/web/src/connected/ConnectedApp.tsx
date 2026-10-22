@@ -14,6 +14,7 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, subscribeEvents } from "../api/client.ts";
+import { WorkspaceControls } from "../components/WorkspaceControls.tsx";
 import { ArtifactMarkdown } from "./ArtifactPane.tsx";
 import { MockupWorkspace } from "./MockupWorkspace.tsx";
 import {
@@ -478,6 +479,8 @@ function ProjectScreen({
     [lockKey, updatePending],
   );
   const [region, setRegion] = useState("mockup");
+  const [leftFold, setLeftFold] = useState(false),
+    [rightFold, setRightFold] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const roundContext = useRef<ExpectedContext | undefined>(undefined);
   const [sending, setSending] = useState(false);
@@ -805,9 +808,40 @@ function ProjectScreen({
           </button>
         ))}
       </nav>
-      <main className="connected-workspace v2-workspace" data-region={region}>
+      {permissions.rows.some((r) => r.status === "pending") && (
+        <p className="next-action" role="status">
+          次の操作: ツール実行の許可要求があります。
+          <button
+            type="button"
+            onClick={() => {
+              setLeftFold(false);
+              setRegion("conversation");
+              requestAnimationFrame(() =>
+                document
+                  .querySelector<HTMLElement>(".permission-card.pending")
+                  ?.scrollIntoView({ block: "center" }),
+              );
+            }}
+          >
+            許可要求を確認
+          </button>
+          許可後も送信は自動で行いません。
+        </p>
+      )}
+      <WorkspaceControls
+        left={leftFold}
+        right={rightFold}
+        setLeft={setLeftFold}
+        setRight={setRightFold}
+      />
+      <main
+        className="connected-workspace v2-workspace"
+        data-region={region}
+        data-left-fold={leftFold}
+        data-right-fold={rightFold}
+      >
         <section className="conversation-pane" aria-label="会話">
-          <details className="progress-pane">
+          <details className="progress-pane" id="formal-workflow">
             <summary>工程・ラウンドの判断と操作</summary>
             <p className="eyebrow">PROGRESS</p>
             <h2>要件の進捗</h2>
@@ -1108,8 +1142,23 @@ function ProjectScreen({
           open={openFile}
           canDraft={canSend && !draft.trim()}
           canCapture={canSend}
+          showWorkflow={() => {
+            setLeftFold(false);
+            setRegion("conversation");
+            requestAnimationFrame(() => {
+              const d = document.getElementById(
+                "formal-workflow",
+              ) as HTMLDetailsElement | null;
+              if (d) {
+                d.open = true;
+                d.scrollIntoView();
+                d.querySelector("button")?.focus();
+              }
+            });
+          }}
           invalidateVisual={invalidateVisual}
           makeDraft={(text, context, visual) => {
+            setLeftFold(false);
             setVisualDraft(visual);
             if (visual && draft.trim())
               text += `\n\n以前の下書き（必要な本文を残し、参照情報を確認してください）：\n${draft}`;

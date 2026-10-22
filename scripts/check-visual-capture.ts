@@ -110,6 +110,24 @@ try {
   if (marked.image.sha256 === captured.image.sha256)
     throw new Error("Missing annotation pixels");
   const { bytes } = await service.validate(store, project, marked.id, expected);
+  const dynamic = await service.capture(
+    store,
+    project,
+    expected,
+    captured.viewport,
+    {
+      html: `<!doctype html><html><body><h1>操作後の予約状態</h1><input value="変更後"><script>fetch('${trap.url}dynamic-script')</script><img src="${trap.url}dynamic-ssrf"><img src="file://${root}/secret.txt"></body></html>`,
+      sourceSha256: hashBytes(new TextEncoder().encode(html)),
+      scrollX: 0,
+      scrollY: 0,
+    },
+  );
+  if (
+    dynamic.rendering !== "sandbox-dom-state" ||
+    dynamic.image.sha256 === captured.image.sha256 ||
+    requests !== 0
+  )
+    throw Error("Dynamic boundary violated");
   await writeFile(join(dir, "style.css"), "body{color:red}");
   let stale = false;
   try {
@@ -132,6 +150,8 @@ try {
   console.log(
     JSON.stringify({
       requests,
+      dynamicRendering: dynamic.rendering,
+      dynamicSha256: dynamic.image.sha256,
       modelCalls: 0,
       rendering: captured.rendering,
       resources: captured.resources.length,

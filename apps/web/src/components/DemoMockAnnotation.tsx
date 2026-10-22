@@ -124,14 +124,13 @@ export function DemoMockAnnotation({
           修正指示モード
         </button>
       </fieldset>
-      {mode === "operate" ? (
-        children
-      ) : (
+      <div hidden={mode !== "operate"}>{children}</div>
+      {mode === "annotate" && (
         <div className="annotation-editor">
           <p id="annotation-help">
             固定の初期画像です（900 ×
             860）。クリックでピン、ドラッグで矩形を指定。
-            操作中の画面・スクロール位置は撮影していません。
+            操作中の画面・スクロール位置は撮影していません。操作後DOM撮影と実画像のAI送信はAPI接続側の機能です。
           </p>
           <div className="annotation-actions">
             <span aria-live="polite">

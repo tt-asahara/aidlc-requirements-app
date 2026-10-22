@@ -1,4 +1,4 @@
-import type { ArtifactEntry } from "@aidlc/shared";
+import type { ArtifactEntry, MockupContract } from "@aidlc/shared";
 import { parseCoverage } from "@aidlc/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -487,19 +487,75 @@ export function LogicalDocuments({
   projectId,
   space,
   selected,
+  intent,
+  contracts,
   open,
 }: {
   user: string;
   projectId: string;
   space: string;
   selected: string;
+  intent: string;
+  contracts: MockupContract[];
   open: (path: string) => void;
 }) {
   const context = { user, projectId, space, open };
   return (
     <aside className="document-nav" aria-label="設計書ナビゲーション">
       <p className="eyebrow">DESIGN DOCUMENTS</p>
-      <h2>設計書</h2>
+      <h2>成果物一覧</h2>
+      {!!intent && (
+        <>
+          <details>
+            <summary>画面原本 · 閲覧ラウンド</summary>
+            <p>HTMLモックは工程の原本です。統合文書とは別です。</p>
+            {contracts.map((c) => (
+              <div key={c.stage}>
+                <strong>
+                  {c.stage === "rough-mockups" ? "1.6 rough" : "2.5 refined"}
+                </strong>
+                <button type="button" onClick={() => open(c.path)}>
+                  契約原本
+                </button>
+                {[
+                  ...new Set(
+                    c.assets
+                      .map((a) => a.path)
+                      .filter((p) => /\.html?$/i.test(p)),
+                  ),
+                ].map((p) => (
+                  <button
+                    type="button"
+                    key={p}
+                    onClick={() =>
+                      open(`${c.path.slice(0, c.path.lastIndexOf("/"))}/${p}`)
+                    }
+                  >
+                    {p}
+                  </button>
+                ))}
+                {!c.assets.length && <p>HTML原本は未生成／未確認です。</p>}
+              </div>
+            ))}
+          </details>
+          <details>
+            <summary>要件・User Stories・正式AC</summary>
+            {[
+              "requirements-analysis/requirements.md",
+              "user-stories/stories.md",
+            ].map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => open(`intents/${intent}/inception/${p}`)}
+              >
+                {p.endsWith("stories.md") ? "User Stories・正式AC" : "要件"}
+              </button>
+            ))}
+          </details>
+        </>
+      )}
+      <h3>全ラウンドの統合設計書</h3>
       <button type="button" onClick={() => open("design-document/README.md")}>
         設計書の概要
       </button>

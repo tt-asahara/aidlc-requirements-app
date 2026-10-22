@@ -6,12 +6,14 @@ import {
   useState,
 } from "react";
 import { CreateDialog, type DialogKind } from "./components/CreateDialog";
+import { DemoChangeImpact } from "./components/DemoChangeImpact.tsx";
 import {
   AnnotationPreview,
   DemoMockAnnotation,
 } from "./components/DemoMockAnnotation";
 import { DocumentView } from "./components/DocumentView";
 import { Icon } from "./components/Icon";
+import { WorkspaceControls } from "./components/WorkspaceControls.tsx";
 import { annotationMatches, mockReference } from "./demo/annotations";
 import {
   type ArtifactPath,
@@ -35,6 +37,8 @@ export function App() {
   const [file, setFile] = useState<ArtifactPath>("design-document/README.md");
   const [widths, setWidths] = useState({ left: 350, right: 250 });
   const [region, setRegion] = useState("mockup");
+  const [leftFold, setLeftFold] = useState(false),
+    [rightFold, setRightFold] = useState(false);
   const openArtifact = (next: "design" | "files" | "mock") => {
     if (project && next !== "mock")
       dispatch({ type: "invalidateAnnotation", projectId: project.id });
@@ -296,7 +300,15 @@ export function App() {
               </button>
             ))}
           </nav>
+          <WorkspaceControls
+            left={leftFold}
+            right={rightFold}
+            setLeft={setLeftFold}
+            setRight={setRightFold}
+          />
           <div
+            data-left-fold={leftFold}
+            data-right-fold={rightFold}
             className="workspace demo-v2-workspace"
             data-region={region}
             style={
@@ -916,6 +928,7 @@ export function App() {
                           key={`${project.id}:${round.id}:${round.stage}:${project.documentVersion}`}
                           disabled={busy}
                           onAttach={(selection) => {
+                            setLeftFold(false);
                             dispatch({
                               type: "annotate",
                               projectId: project.id,
@@ -943,6 +956,25 @@ export function App() {
                             srcDoc={interactiveMockHtml}
                           />
                         </DemoMockAnnotation>
+                        <DemoChangeImpact
+                          key={`${project.id}/${round.id}`}
+                          onDraft={(text) => {
+                            dispatch({
+                              type: "clearAnnotation",
+                              projectId: project.id,
+                            });
+                            dispatch({
+                              type: "draft",
+                              projectId: project.id,
+                              text,
+                            });
+                            setLeftFold(false);
+                            setRegion("conversation");
+                            requestAnimationFrame(() =>
+                              composer.current?.focus(),
+                            );
+                          }}
+                        />
                         <p className="sandbox-note">
                           <Icon name="shield" size={13} />
                           sandbox 内のサンプル · 外部通信なし
@@ -1023,30 +1055,46 @@ export function App() {
               </div>
               {round && (
                 <nav className="file-tree" aria-label="サンプルファイル">
-                  {artifactFiles.map((f) => (
-                    <button
-                      type="button"
-                      key={f.path}
-                      className={activePath === f.path ? "selected" : ""}
-                      aria-current={activePath === f.path ? "true" : undefined}
-                      onClick={() => {
-                        setFile(f.path);
-                        openArtifact(
-                          f.kind === "html"
-                            ? "mock"
-                            : f.path === "design-document/README.md"
-                              ? "design"
-                              : "files",
-                        );
-                      }}
-                    >
-                      <Icon
-                        name={f.kind === "html" ? "code" : "file"}
-                        size={14}
-                      />
-                      <span>{f.path}</span>
-                      <small>{f.kind === "html" ? "HTML" : "MD"}</small>
-                    </button>
+                  {artifactFiles.map((f, i) => (
+                    <div key={f.path}>
+                      {(i === 0 || i === 1 || i === 3) && (
+                        <h3>
+                          {i === 0
+                            ? "統合設計書"
+                            : i === 1
+                              ? "要件・正式AC"
+                              : "画面原本（定型デモ）"}
+                        </h3>
+                      )}
+                      <button
+                        type="button"
+                        key={f.path}
+                        className={activePath === f.path ? "selected" : ""}
+                        aria-current={
+                          activePath === f.path ? "true" : undefined
+                        }
+                        onClick={() => {
+                          setFile(f.path);
+                          openArtifact(
+                            f.kind === "html"
+                              ? "mock"
+                              : f.path === "design-document/README.md"
+                                ? "design"
+                                : "files",
+                          );
+                        }}
+                      >
+                        <Icon
+                          name={f.kind === "html" ? "code" : "file"}
+                          size={14}
+                        />
+                        <span>
+                          {f.label}
+                          <small>{f.path}</small>
+                        </span>
+                        <small>{f.kind === "html" ? "HTML" : "MD"}</small>
+                      </button>
+                    </div>
                   ))}
                 </nav>
               )}

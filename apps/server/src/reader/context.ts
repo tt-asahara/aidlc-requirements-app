@@ -10,6 +10,7 @@ import {
   type Store,
   TurnAdmissionError,
 } from "../store/types.ts";
+import { impactPaths, readChangeImpact } from "./change-impact.ts";
 import { readMockups, validHash } from "./mockups.ts";
 import { singleName } from "./paths.ts";
 import { readProgress } from "./progress.ts";
@@ -34,7 +35,14 @@ export function parseExpectedContext(
 ): ExpectedContext | undefined {
   if (value === undefined) return undefined;
   const v = record(value);
-  keys(v, ["space", "activeIntent", "currentStage", "latestTurn", "reference"]);
+  keys(v, [
+    "space",
+    "activeIntent",
+    "currentStage",
+    "latestTurn",
+    "reference",
+    "documents",
+  ]);
   let latestTurn: ExecutionContext["latestTurn"] = null;
   if (v.latestTurn !== null) {
     const cursor = record(v.latestTurn);
@@ -103,6 +111,25 @@ export function parseExpectedContext(
       },
     };
   }
+  if (v.documents !== undefined) {
+    if (
+      !result.activeIntent ||
+      !Array.isArray(v.documents) ||
+      v.documents.length !== impactPaths(result.activeIntent).length
+    )
+      throw new PromptError("Invalid related documents");
+    const allowed = impactPaths(result.activeIntent);
+    result.documents = v.documents.map((item: unknown, i: number) => {
+      const d = record(item);
+      keys(d, ["path", "sha256"]);
+      if (
+        d.path !== allowed[i]?.path ||
+        !(d.sha256 === null || validHash(d.sha256))
+      )
+        throw new PromptError("Invalid related document");
+      return { path: d.path as string, sha256: d.sha256 as string | null };
+    });
+  }
   return result;
 }
 export const stale = () =>
@@ -151,6 +178,23 @@ export async function validateContext(
       JSON.stringify(admitted ?? expected.latestTurn)
   )
     throw stale();
+  if (expected.documents) {
+    if (!expected.activeIntent) throw stale();
+    try {
+      const current = await readChangeImpact(
+        project.workspaceDir,
+        expected.activeIntent,
+      );
+      if (
+        JSON.stringify(
+          current.documents.map(({ path, sha256 }) => ({ path, sha256 })),
+        ) !== JSON.stringify(expected.documents)
+      )
+        throw stale();
+    } catch {
+      throw stale();
+    }
+  }
   const r = expected.reference;
   if (r) {
     // Historical rounds remain view-only; quoting must be an explicit ordinary draft.

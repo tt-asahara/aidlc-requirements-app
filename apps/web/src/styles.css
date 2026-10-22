@@ -2185,3 +2185,74 @@ a {
 .demo-v2-workspace .composer textarea {
   min-height: 80px;
 }
+.workspace-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  background: #f6f9f7;
+}
+.workspace-controls button {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+}
+.workspace-controls small {
+  color: #536b61;
+}
+.file-tree h3 {
+  margin: 14px 10px 5px;
+  font-size: 12px;
+  color: #536b61;
+}
+.file-tree button small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1101px) {
+  .workspace.demo-v2-workspace[data-left-fold="true"] {
+    grid-template-columns: 0 0 minmax(360px, 1fr) 7px min(
+        var(--right-width),
+        24vw
+      );
+  }
+  .workspace.demo-v2-workspace[data-right-fold="true"] {
+    grid-template-columns: min(var(--left-width), 30vw) 7px minmax(360px, 1fr) 0 0;
+  }
+  .workspace.demo-v2-workspace[data-left-fold="true"][data-right-fold="true"] {
+    grid-template-columns: 0 0 minmax(0, 1fr) 0 0;
+  }
+  .demo-v2-workspace[data-left-fold="true"] > .conversation,
+  .demo-v2-workspace[data-right-fold="true"] > .artifacts {
+    display: none;
+  }
+  .demo-v2-workspace[data-left-fold="true"] > [role="separator"]:nth-child(2),
+  .demo-v2-workspace[data-right-fold="true"] > [role="separator"]:nth-child(4) {
+    visibility: hidden;
+  }
+}
+@media (max-width: 1100px) {
+  .workspace-controls {
+    display: none;
+  }
+}
+.demo-impact {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+.demo-impact textarea {
+  display: block;
+  width: 100%;
+  min-height: 80px;
+}
+.demo-impact button {
+  padding: 8px 12px;
+  cursor: pointer;
+}

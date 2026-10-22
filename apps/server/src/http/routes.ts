@@ -14,6 +14,7 @@ import {
   listArtifacts,
   readArtifact,
 } from "../reader/artifacts.ts";
+import { readChangeImpact } from "../reader/change-impact.ts";
 import {
   executionContext,
   parseExpectedContext,
@@ -246,6 +247,14 @@ export function projectRoutes(deps: ApiDependencies) {
       throw new TurnAdmissionError(409, "Project is not ready");
     return c.json(
       await readMockups(project.workspaceDir, c.req.query("intent") ?? ""),
+    );
+  });
+  app.get("/api/projects/:id/change-impact", async (c) => {
+    const project = ownProject(c.req.param("id"), c.get("userId"));
+    if (project.status !== "ready")
+      throw new TurnAdmissionError(409, "Project not ready");
+    return c.json(
+      await readChangeImpact(project.workspaceDir, c.req.query("intent") ?? ""),
     );
   });
   app.post("/api/projects/:id/visual-snapshots", async (c) => {

@@ -46,7 +46,10 @@ test("V2 actual HTML states, every AC, legacy distinction, document round-trip a
     ),
   ).toBeVisible();
   await state.selectOption({ label: "ERROR · AC1.1.4" });
-  await expect(iframe).toHaveAttribute("src", /error\.html$/);
+  await expect(iframe).toHaveAttribute(
+    "src",
+    /error\.html\?aidlcCapture=[a-f0-9-]{36}$/,
+  );
   await expect(
     page
       .frameLocator('iframe[title="HTML モックアップ"]')

@@ -183,6 +183,7 @@ test("capture browser blocks network/file/script sources and binds supplementary
     requests: 0,
     modelCalls: 0,
     rendering: "scripts-disabled-initial",
+    dynamicRendering: "sandbox-dom-state",
     resources: 2,
     staleRejected: true,
     symlinkExcluded: true,
