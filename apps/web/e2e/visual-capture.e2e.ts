@@ -6,6 +6,7 @@ import { create, start } from "./helpers.ts";
 test("real server capture uses HTML bytes, attaches the marked PNG explicitly, and preserves a stale draft", async ({
   page,
 }) => {
+  test.setTimeout(90_000); // Multiple isolated Chrome launches; each HTTP capture remains bounded.
   let turns = 0;
   let snapshotCalls = 0;
   page.on("request", (r) => {
@@ -157,7 +158,15 @@ test("real server capture uses HTML bytes, attaches the marked PNG explicitly, a
     exact: true,
   });
   await expect(recapture).toBeEnabled();
+  const recaptured = page.waitForResponse(
+    (r) =>
+      r.url().endsWith("/visual-snapshots") && r.request().method() === "POST",
+  );
   await recapture.click();
+  const recapturedResponse = await recaptured;
+  expect(recapturedResponse.status(), await recapturedResponse.text()).toBe(
+    201,
+  );
   const comparison = page.getByText(/前回の撮影と比較/, { exact: false });
   await expect(comparison).toBeVisible();
   await comparison.click();
@@ -216,7 +225,7 @@ test("operation-state capture reads the opaque preview without widening its sand
     .getByRole("button", { name: "操作後の状態を撮影", exact: true })
     .click();
   const r = await response;
-  expect(r.status()).toBe(201);
+  expect(r.status(), await r.text()).toBe(201);
   const sent = r.request().postDataJSON();
   expect(sent.scene.html).toContain('value="変更後"');
   expect(sent.scene.html).toContain("操作完了");

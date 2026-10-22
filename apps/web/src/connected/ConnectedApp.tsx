@@ -502,21 +502,6 @@ function ProjectScreen({
     retry: false,
     enabled: project.status === "ready",
   });
-  const progress = useQuery({
-    queryKey: [...prefix, "progress"],
-    queryFn: () => api<Progress>(user, `/api/projects/${project.id}/progress`),
-    refetchInterval: 1000,
-    retry: false,
-    enabled: project.status === "ready",
-  });
-  const execution = useQuery({
-    queryKey: [...prefix, "context"],
-    queryFn: () =>
-      api<ExpectedContext>(user, `/api/projects/${project.id}/context`),
-    refetchInterval: 1000,
-    retry: false,
-    enabled: project.status === "ready",
-  });
   const turns = useMemo(
     () =>
       [
@@ -528,6 +513,26 @@ function ProjectScreen({
       ].sort((a, b) => a.seq - b.seq),
     [history.data],
   );
+  const settledRevision =
+    turns.filter((t) => !["queued", "running"].includes(t.status)).at(-1)?.id ??
+    null;
+  const progress = useQuery({
+    queryKey: [...prefix, "progress", settledRevision],
+    placeholderData: (previous) => previous,
+    queryFn: () => api<Progress>(user, `/api/projects/${project.id}/progress`),
+    refetchInterval: 1000,
+    retry: false,
+    enabled: project.status === "ready",
+  });
+  const execution = useQuery({
+    queryKey: [...prefix, "context", settledRevision],
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      api<ExpectedContext>(user, `/api/projects/${project.id}/context`),
+    refetchInterval: 1000,
+    retry: false,
+    enabled: project.status === "ready",
+  });
   const active = turns.find((turn) =>
     ["queued", "running"].includes(turn.status),
   );
@@ -556,6 +561,8 @@ function ProjectScreen({
     !busy &&
     !history.isPending &&
     !progress.isPending &&
+    !progress.isPlaceholderData &&
+    !execution.isPlaceholderData &&
     !history.error &&
     !progress.error &&
     !execution.error &&
