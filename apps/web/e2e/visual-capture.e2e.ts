@@ -49,6 +49,24 @@ test("real server capture uses HTML bytes, attaches the marked PNG explicitly, a
   const before = turns;
   await image.focus();
   await page.keyboard.press("Enter");
+  await image.scrollIntoViewIfNeeded();
+  const pixels = await image.locator("img").boundingBox();
+  if (!pixels) throw new Error("No capture pixels");
+  await page.mouse.move(
+    pixels.x + pixels.width * 0.1,
+    pixels.y + pixels.height * 0.1,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    pixels.x + pixels.width * 0.5,
+    pixels.y + pixels.height * 0.3,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  const mark = await image.locator(".annotation-mark.rectangle").boundingBox();
+  if (!mark) throw new Error("No visible rectangle");
+  expect(Math.abs(mark.x - (pixels.x + pixels.width * 0.1))).toBeLessThan(2);
+  expect(Math.abs(mark.y - (pixels.y + pixels.height * 0.1))).toBeLessThan(2);
   const annotationResponse = page.waitForResponse(
     (r) => r.url().endsWith("/annotations") && r.request().method() === "POST",
   );
@@ -59,6 +77,10 @@ test("real server capture uses HTML bytes, attaches the marked PNG explicitly, a
     })
     .click();
   const snapshot = (await (await annotationResponse).json()).snapshot;
+  expect(snapshot.selection.x).toBeCloseTo(0.1, 2);
+  expect(snapshot.selection.y).toBeCloseTo(0.1, 2);
+  expect(snapshot.selection.width).toBeCloseTo(0.4, 2);
+  expect(snapshot.selection.height).toBeCloseTo(0.2, 2);
   const preview = page.locator(".visual-draft-preview");
   await expect(preview).toBeVisible();
   await expect(preview).toHaveAttribute("data-stale", "false");

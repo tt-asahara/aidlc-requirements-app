@@ -5,10 +5,13 @@ test("disconnected demo keeps conversation left, artifacts central, and navigati
 }) => {
   let apiRequests = 0;
   let mutations = 0;
-  await page.route("**/api/**", async (route) => {
-    apiRequests++;
-    await route.abort();
-  });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/"),
+    async (route) => {
+      apiRequests++;
+      await route.abort();
+    },
+  );
   page.on("request", (request) => {
     if (request.method() !== "GET") mutations++;
   });

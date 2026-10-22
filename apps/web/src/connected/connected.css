@@ -970,3 +970,6 @@
     max-height: 16%;
   }
 }
+.connected-app .annotation-surface {
+  padding: 0;
+}
