@@ -18,6 +18,14 @@ await fs.mkdir(out, { recursive: true });
 await exec("/usr/bin/ditto", [path.resolve(electron, "../../.."), bundle]);
 const app = path.join(bundle, "Contents/Resources/app");
 await fs.mkdir(app, { recursive: true });
+const { stdout: bunPath } = await exec("bun", ["-p", "process.execPath"]);
+const bunExecutable = await fs.realpath(bunPath.trim());
+const { stdout: bunVersion } = await exec(bunExecutable, ["--version"]);
+if (bunVersion.trim() !== "1.3.14")
+  throw new Error("Pinned harness runtime Bun 1.3.14 required");
+await fs.mkdir(path.join(app, "vendor/bin"), { recursive: true });
+await fs.copyFile(bunExecutable, path.join(app, "vendor/bin/bun"));
+await fs.chmod(path.join(app, "vendor/bin/bun"), 0o755);
 await fs.writeFile(
   path.join(app, "package.json"),
   JSON.stringify({
@@ -81,6 +89,7 @@ const receipt = {
   signature: "local ad-hoc only",
   notarized: false,
   externalRuntimeRequired: false,
+  bundledBunVersion: bunVersion.trim(),
   userInstalledClaudeRequired: true,
   gitRequiredForSourceFetch: true,
 };

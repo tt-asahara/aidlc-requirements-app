@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -24,6 +25,15 @@ try {
   const s = await call("state");
   assert.equal(s.runtime.electron, "45.0.0");
   assert.equal(s.runtime.platform, "darwin");
+  assert.equal(s.runtime.bundledBun, true);
+  assert.equal(
+    execFileSync(
+      path.join(receipt.bundle, "Contents/Resources/app/vendor/bin/bun"),
+      ["--version"],
+      { encoding: "utf8" },
+    ).trim(),
+    "1.3.14",
+  );
   await fs.mkdir(path.join(s.active.root, "aidlc/design-document"), {
     recursive: true,
   });

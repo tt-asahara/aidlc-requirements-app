@@ -37,6 +37,17 @@ import {
 import { readMockups, readProgress } from "./dist/local-reader.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const bunDirectory = path.resolve(here, "../../vendor/bin");
+const bundledBun = await fs
+  .stat(path.join(bunDirectory, "bun"))
+  .then((s) => s.isFile())
+  .catch(() => false);
+function executionEnvironment() {
+  const env = cliEnvironment(process.env);
+  if (bundledBun)
+    env.PATH = `${bunDirectory}${path.delimiter}${env.PATH ?? "/usr/bin:/bin"}`;
+  return env;
+}
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "aidlc-preview",
@@ -130,6 +141,7 @@ function state() {
       node: process.versions.node,
       platform: process.platform,
       arch: process.arch,
+      bundledBun,
     },
     cli,
     active: workspace.active ? { ...workspace.active } : null,
@@ -427,7 +439,7 @@ async function startTerminal(versionOnly = false, size) {
   cli = await inspectCli(config.cli);
   const cwd = workspace.active?.root ?? data;
   ptyWorker = utilityProcess.fork(path.join(here, "pty-host.mjs"), [], {
-    env: cliEnvironment(process.env),
+    env: executionEnvironment(),
     stdio: "pipe",
     serviceName: "Official Claude PTY",
   });
@@ -462,7 +474,7 @@ async function startTerminal(versionOnly = false, size) {
     args: versionOnly ? ["--version"] : [],
     cwd,
     env: {
-      ...cliEnvironment(process.env),
+      ...executionEnvironment(),
       TERM: "xterm-256color",
       COLORTERM: "truecolor",
       LANG: process.env.LANG || "en_US.UTF-8",
