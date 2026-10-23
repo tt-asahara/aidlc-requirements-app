@@ -1,0 +1,96 @@
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { promisify } from "node:util";
+
+const exec = promisify(execFile);
+if (process.platform !== "darwin" || process.arch !== "arm64")
+  throw new Error("This package target is macOS arm64");
+const require = createRequire(path.resolve("apps/desktop/package.json"));
+const electron = require("electron"),
+  pty = path.dirname(require.resolve("node-pty/package.json"));
+const { stdout } = await exec("git", ["rev-parse", "--short=12", "HEAD"]);
+const revision = stdout.trim(),
+  out = path.resolve(".cache/v3-mac", `${revision}-${Date.now()}`),
+  bundle = path.join(out, "AI-DLC Workbench.app");
+await fs.mkdir(out, { recursive: true });
+await exec("/usr/bin/ditto", [path.resolve(electron, "../../.."), bundle]);
+const app = path.join(bundle, "Contents/Resources/app");
+await fs.mkdir(app, { recursive: true });
+await fs.writeFile(
+  path.join(app, "package.json"),
+  JSON.stringify({
+    name: "aidlc-local-workbench",
+    productName: "AI-DLC Workbench",
+    version: "0.3.0",
+    main: "apps/desktop/bootstrap.cjs",
+    private: true,
+  }),
+);
+for (const folder of [
+  "apps/desktop",
+  "apps/collaboration",
+  "packages/workbench",
+]) {
+  await fs.mkdir(path.join(app, folder), { recursive: true });
+  for (const file of await fs.readdir(folder))
+    if (/\.(mjs|cjs)$/.test(file) && !file.includes(".nodecheck."))
+      await fs.copyFile(path.join(folder, file), path.join(app, folder, file));
+}
+await fs.cp("apps/desktop/dist", path.join(app, "apps/desktop/dist"), {
+  recursive: true,
+});
+await fs.mkdir(path.join(app, "node_modules"), { recursive: true });
+await fs.cp(pty, path.join(app, "node_modules/node-pty"), {
+  recursive: true,
+  filter: (src) =>
+    !/(?:^|\/)(?:node_modules|src|test|test_data|benchmark|\.git)(?:\/|$)/.test(
+      path.relative(pty, src),
+    ),
+});
+const plist = path.join(bundle, "Contents/Info.plist");
+for (const [key, value] of [
+  ["CFBundleName", "AI-DLC Workbench"],
+  ["CFBundleDisplayName", "AI-DLC Workbench"],
+  ["CFBundleIdentifier", "com.aidlc.local-workbench"],
+  ["CFBundleShortVersionString", "0.3.0"],
+]) {
+  await exec("/usr/libexec/PlistBuddy", ["-c", `Set :${key} ${value}`, plist]);
+}
+const entitlements = path.join(out, "entitlements.plist");
+await fs.writeFile(
+  entitlements,
+  '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>',
+);
+await exec("/usr/bin/codesign", [
+  "--force",
+  "--deep",
+  "--sign",
+  "-",
+  "--entitlements",
+  entitlements,
+  bundle,
+]);
+await exec("/usr/bin/codesign", ["--verify", "--deep", "--strict", bundle]);
+const receipt = {
+  at: new Date().toISOString(),
+  bundle,
+  revision,
+  target: "darwin-arm64",
+  signature: "local ad-hoc only",
+  notarized: false,
+  externalRuntimeRequired: false,
+  userInstalledClaudeRequired: true,
+  gitRequiredForSourceFetch: true,
+};
+await fs.writeFile(
+  path.join(out, "build.json"),
+  JSON.stringify(receipt, null, 2),
+);
+await fs.mkdir(path.resolve("../evidence/v3"), { recursive: true });
+await fs.writeFile(
+  path.resolve("../evidence/v3/package-current.json"),
+  JSON.stringify(receipt, null, 2),
+);
+console.log(JSON.stringify(receipt));

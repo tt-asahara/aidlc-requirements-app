@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -300,11 +301,18 @@ async function targetFile(root, name, create = false) {
   return dest;
 }
 const maybe = async (file) => {
+  let handle;
   try {
-    return await fs.readFile(file);
+    handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > 110 * 1024 * 1024)
+      throw new Error("安全な管理ファイルではありません");
+    return await handle.readFile();
   } catch (e) {
     if (e.code === "ENOENT") return null;
     throw e;
+  } finally {
+    await handle?.close();
   }
 };
 function mergeSettings(current, next, previous) {
@@ -333,8 +341,61 @@ function mergeSettings(current, next, previous) {
     `${JSON.stringify(merge(JSON.parse(current), previous ? JSON.parse(previous) : undefined, JSON.parse(next)), null, 2)}\n`,
   );
 }
+async function harnessDirectory(root, create = false) {
+  const base = await fs.realpath(root),
+    dir = path.join(base, ".v3-harness");
+  try {
+    const st = await fs.lstat(dir);
+    if (!st.isDirectory() || st.isSymbolicLink())
+      throw new Error("ハーネス管理フォルダが安全ではありません");
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+    if (create) await fs.mkdir(dir, { mode: 0o700 });
+  }
+  return dir;
+}
+export async function harnessStatus(root) {
+  const dir = await harnessDirectory(root);
+  const current = JSON.parse(
+    (await maybe(path.join(dir, "current.json")))?.toString() ?? "null",
+  );
+  const backups = [];
+  try {
+    for (const name of await fs.readdir(dir)) {
+      if (!/^[0-9a-f-]{36}$/.test(name)) continue;
+      const folder = path.join(dir, name),
+        stat = await fs.lstat(folder);
+      if (!stat.isDirectory() || stat.isSymbolicLink())
+        throw new Error("backupフォルダが安全ではありません");
+      const receipt = JSON.parse(
+        await maybe(path.join(folder, "receipt.json")),
+      );
+      if (
+        ["prepared", "restoring"].includes(receipt.state) ||
+        (receipt.state === "committed" && receipt.bundle === current?.bundle)
+      )
+        backups.push({
+          backup: folder,
+          bundle: receipt.bundle,
+          at: receipt.at,
+          interrupted: receipt.state !== "committed",
+        });
+    }
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+  }
+  backups.sort((a, b) => b.at.localeCompare(a.at));
+  return { current, lastBackup: backups[0] ?? null };
+}
 export async function harnessPlan(root, bundle, receipt) {
-  const currentFile = path.join(root, ".v3-harness/current.json");
+  if (
+    !Array.isArray(bundle.files) ||
+    bundle.files.length > 10000 ||
+    hash(JSON.stringify(bundle.files.map((f) => [f.path, f.sha256]))) !==
+      bundle.id
+  )
+    throw new Error("配布manifestが変更されています");
+  const currentFile = path.join(await harnessDirectory(root), "current.json");
   receipt ??= JSON.parse((await maybe(currentFile))?.toString() ?? "null");
   const changes = [],
     managed = [];
@@ -414,7 +475,7 @@ export async function applyHarness(
     if ((b ? hash(b) : null) !== f.beforeHash)
       throw new Error("差分表示後に変更されました。適用しません");
   }
-  const backup = path.join(root, ".v3-harness", randomUUID());
+  const backup = path.join(await harnessDirectory(root, true), randomUUID());
   await fs.mkdir(backup, { recursive: true, mode: 0o700 });
   const receipt = {
     bundle: plan.bundle,
@@ -463,13 +524,11 @@ export async function rollbackHarness(
   { running = false, securityReviewed = false } = {},
 ) {
   if (running) throw new Error("CLIを終了してください");
-  const expected = path.join(await fs.realpath(root), ".v3-harness");
+  const expected = await harnessDirectory(root);
   const real = await fs.realpath(backup);
   if (path.dirname(real) !== expected) throw new Error("別案件のbackupです");
-  const receipt = JSON.parse(
-    await fs.readFile(path.join(real, "receipt.json"), "utf8"),
-  );
-  if (receipt.state !== "committed")
+  const receipt = JSON.parse(await maybe(path.join(real, "receipt.json")));
+  if (!["committed", "prepared", "restoring"].includes(receipt.state))
     throw new Error("未完の適用は手動回復が必要です");
   if (receipt.files.some((f) => f.security) && !securityReviewed)
     throw new Error("安全設定を戻す明示確認が必要です");
@@ -477,16 +536,24 @@ export async function rollbackHarness(
     (await maybe(path.join(root, ".v3-harness/current.json")))?.toString() ??
       "null",
   );
-  if (current?.bundle !== receipt.bundle)
+  if (receipt.state === "committed" && current?.bundle !== receipt.bundle)
     throw new Error("別の更新が適用済みです");
   for (const f of receipt.files) {
     const b = await maybe(await targetFile(root, f.path));
-    if ((b ? hash(b) : null) !== f.afterHash)
+    const actual = b ? hash(b) : null;
+    if (
+      actual !== f.afterHash &&
+      !(receipt.state !== "committed" && actual === f.beforeHash)
+    )
       throw new Error("適用後に変更されたため上書きせず保全します");
   }
+  receipt.state = "restoring";
+  await fs.writeFile(path.join(real, "receipt.json"), JSON.stringify(receipt), {
+    mode: 0o600,
+  });
   for (const f of receipt.files) {
     const dest = await targetFile(root, f.path, true);
-    if (f.before === null) await fs.unlink(dest);
+    if (f.before === null) await fs.rm(dest, { force: true });
     else
       await fs.writeFile(dest, Buffer.from(f.before, "base64"), {
         mode: 0o600,
@@ -497,7 +564,7 @@ export async function rollbackHarness(
     await fs.writeFile(currentPath, JSON.stringify(receipt.previous), {
       mode: 0o600,
     });
-  else await fs.unlink(currentPath);
+  else await fs.rm(currentPath, { force: true });
   receipt.state = "restored";
   await fs.writeFile(path.join(real, "receipt.json"), JSON.stringify(receipt), {
     mode: 0o600,

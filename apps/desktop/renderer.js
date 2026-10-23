@@ -9,8 +9,9 @@ let state = {},
   selection = null,
   start = null,
   shotImage = null,
-  lastDocHash = null,
-  filesKey = "";
+  filesKey = "",
+  renderedRoot = null,
+  selectionRequest = 0;
 const terminal = new Terminal({
   fontFamily: "Menlo,monospace",
   fontSize: 13,
@@ -76,6 +77,7 @@ function layout() {
         width: r.width,
         height: r.height,
         hidden:
+          $("center").hidden ||
           !$("annotation").hidden ||
           !!$("document").textContent ||
           !!document.querySelector("dialog[open]"),
@@ -93,6 +95,14 @@ function el(tag, text) {
   return e;
 }
 function render(s) {
+  if (renderedRoot !== s.active?.root) {
+    renderedRoot = s.active?.root;
+    $("annotation").hidden = true;
+    $("previewArea").hidden = false;
+    $("document").textContent = "";
+    $("document").hidden = true;
+    $("empty").hidden = !!s.selected;
+  }
   state = s;
   $("error").hidden = !s.error;
   if (s.error) $("error").textContent = s.error;
@@ -143,6 +153,10 @@ function render(s) {
   };
   for (const f of s.files ?? []) {
     if (!/\.(md|html|txt)$/i.test(f.path)) continue;
+    const intent = f.path.match(
+      /^aidlc\/spaces\/[^/]+\/intents\/([^/]+)\//,
+    )?.[1];
+    if (intent && s.viewIntent && intent !== s.viewIntent) continue;
     const group = f.path.endsWith(".html")
       ? "モック原本"
       : f.path.includes("design-document/")
@@ -152,7 +166,7 @@ function render(s) {
           : "関連資料";
     groups[group].push(f);
   }
-  const nextFilesKey = JSON.stringify([s.files, s.selected]);
+  const nextFilesKey = JSON.stringify([s.files, s.selected, s.viewIntent]);
   if (nextFilesKey !== filesKey) {
     filesKey = nextFilesKey;
     $("fileList").replaceChildren();
@@ -178,8 +192,9 @@ function render(s) {
         ),
       );
   }
+  renderWorkflow();
   $("settingsInfo").textContent =
-    `公式CLI: ${s.cli?.path ?? s.config?.cli}\n版: ${s.cli?.version ?? "未確認"}\nTeamログイン: 本人がCLI内で確認\n保存先: ${s.config?.store}\nハーネス取得元: ${s.config?.harnessSource}\n取得済みcommit: ${s.config?.downloaded?.revision ?? "未取得"}\n準備済み配布hash: ${s.harnessBundle?.id ?? s.config?.prepared ?? "未選択"}\n前回適用版: ${s.config?.applied?.bundle ?? "未適用"}\n前回適用案件: ${s.config?.applied?.project ?? "—"}`;
+    `公式CLI: ${s.cli?.path ?? s.config?.cli}\n版: ${s.cli?.version ?? "未確認"}\nTeamログイン: 本人がCLI内で確認\n保存先: ${s.config?.store}\nハーネス取得元: ${s.config?.harnessSource}\n取得済みcommit: ${s.config?.downloaded?.revision ?? "未取得"}\n準備済み配布hash: ${s.harnessBundle?.id ?? s.config?.prepared ?? "未選択"}\nこの案件の適用版: ${s.appliedHarness?.bundle ?? "未適用"}\n復元: ${s.lastBackup ? (s.lastBackup.interrupted ? "中断された適用あり・復元可能" : "直前へ復元可能") : "バックアップなし"}`;
   $("harnessDiff").textContent = s.harnessPending
     ? s.harnessPending.changes.length
       ? s.harnessPending.changes
@@ -217,14 +232,16 @@ function render(s) {
       el("p", `${c.name} · ${c.version.slice(0, 8)}\n${c.text}`),
     ),
   );
-  if (s.selected?.path.endsWith(".md") && lastDocHash !== s.selected.sha256) {
-    lastDocHash = s.selected.sha256;
-    void call("files.select", { path: s.selected.path })
-      .then((r) => {
-        $("document").textContent = r.text ?? "";
-      })
-      .catch(() => {});
+  if (!s.selected) {
+    $("document").textContent = "";
+    $("annotation").hidden = true;
+    $("previewArea").hidden = false;
+    $("empty").hidden = false;
   }
+  if (s.selected?.path && /\.(md|txt)$/.test(s.selected.path))
+    $("document").textContent = s.documentText ?? "";
+  $("fileTitle").textContent =
+    s.selected?.path ?? "モックを見ながら、具体化する";
   if (!paneInitialized) {
     paneInitialized = true;
     if (s.config?.panes) paneWidths = s.config.panes;
@@ -233,16 +250,97 @@ function render(s) {
   }
   layout();
 }
+let workflowKey = "",
+  mappedFile = "";
+function currentContract() {
+  return state.workflow?.mockups?.contracts.find(
+    (c) => c.stage === $("contractStage").value,
+  );
+}
+function currentMapping() {
+  return currentContract()?.mappings[Number($("mapping").value)];
+}
+function mappingPath() {
+  const c = currentContract(),
+    m = currentMapping(),
+    projection = state.workflow?.mockups;
+  return c && m && projection
+    ? `aidlc/spaces/${projection.space}/${c.path.slice(0, c.path.lastIndexOf("/"))}/${m.asset}`
+    : null;
+}
+function updateMappingHint() {
+  const m = currentMapping();
+  $("mappingHint").textContent = m
+    ? `議論する対象です。選択だけで状態を再現しません。モック内の操作で確認してください。確認項目: ${m.check}`
+    : "契約の対応付けはまだありません。";
+  $("openMapping").disabled = !m?.asset.endsWith(".html");
+}
+function renderWorkflow() {
+  const w = state.workflow,
+    progress = w?.progress;
+  $("workflowStatus").textContent =
+    w?.message ??
+    (progress?.active
+      ? `実行対象: ${progress.active.dirName} / ${progress.active.currentStage ?? "未開始"}`
+      : "工程未生成");
+  $("workflowContext").hidden = !progress?.intents?.length;
+  if (!progress?.intents?.length) return;
+  const roundKey = JSON.stringify([progress.intents, state.viewIntent]);
+  if ($("viewRound").dataset.key !== roundKey) {
+    $("viewRound").dataset.key = roundKey;
+    $("viewRound").replaceChildren();
+    for (const i of progress.intents) {
+      const o = el(
+        "option",
+        `${i.slug} · ${i.dirName}${i.isActive ? "（実行対象）" : "（過去・参照）"}`,
+      );
+      o.value = i.dirName;
+      $("viewRound").append(o);
+    }
+    $("viewRound").value = state.viewIntent;
+  }
+  if (mappedFile !== state.selected?.path) {
+    mappedFile = state.selected?.path;
+    if (mappedFile?.includes("refined-mockups/"))
+      $("contractStage").value = "refined-mockups";
+    else if (mappedFile?.includes("rough-mockups/"))
+      $("contractStage").value = "rough-mockups";
+  }
+  const c = currentContract(),
+    key = JSON.stringify([state.viewIntent, c]);
+  if (workflowKey !== key) {
+    workflowKey = key;
+    $("mapping").replaceChildren();
+    for (const [index, m] of (c?.mappings ?? []).entries()) {
+      const o = el("option", `${m.screen} / ${m.state} / ${m.ac}`);
+      o.value = String(index);
+      $("mapping").append(o);
+    }
+    $("contractStatus").textContent = c
+      ? `契約: ${c.parsing} / 実バイト整合: ${c.integrity} / 工程記録: ${c.stageMark ?? "なし"} · ${c.message ?? "契約の解析・ハッシュ一致だけでは本人承認の証明になりません。"}`
+      : "契約未生成";
+    updateMappingHint();
+  }
+}
+button("openMapping", () => {
+  const target = mappingPath();
+  if (target && target !== state.selected?.path) return select(target);
+});
+$("mapping").onchange = updateMappingHint;
+$("contractStage").onchange = renderWorkflow;
+$("viewRound").onchange = () =>
+  void call("workflow.view", { intent: $("viewRound").value }).catch(() => {});
 api.onState(render);
 async function select(name) {
+  const request = ++selectionRequest;
   const r = await call("files.select", { path: name });
+  if (request !== selectionRequest) return;
   $("fileTitle").textContent = name;
   $("empty").hidden = true;
   $("annotation").hidden = true;
   $("previewArea").hidden = false;
   $("document").hidden = r.type === "html";
   $("document").textContent = r.text ?? "";
-  lastDocHash = r.selected?.sha256;
   layout();
 }
 button("newLocal", () => call("local.create"));
@@ -347,10 +445,28 @@ button("addComment", async () => {
   $("comment").value = "";
 });
 let paneWidths = { left: 480, right: 260 },
-  paneInitialized = false;
+  paneInitialized = false,
+  activeRegion = "center";
 const main = document.querySelector("main");
 function sizePanes() {
   const available = main.clientWidth;
+  const narrow = available < 720;
+  $("regions").hidden = !narrow;
+  $("leftFold").hidden = narrow;
+  $("rightFold").hidden = narrow;
+  if (narrow) {
+    $("terminalPane").hidden = activeRegion !== "terminal";
+    $("center").hidden = activeRegion !== "center";
+    $("artifacts").hidden = activeRegion !== "artifacts";
+    $("leftResize").hidden = true;
+    $("rightResize").hidden = true;
+    main.style.gridTemplateColumns = "minmax(0, 1fr)";
+    layout();
+    return;
+  }
+  $("center").hidden = false;
+  $("terminalPane").hidden = main.classList.contains("fold-left");
+  $("artifacts").hidden = main.classList.contains("fold-right");
   const leftHidden = main.classList.contains("fold-left");
   const rightHidden = main.classList.contains("fold-right");
   const centerMin = Math.min(
@@ -432,6 +548,16 @@ for (const side of ["left", "right"]) {
     sizePanes();
     void savePanes().catch(() => {});
   };
+}
+for (const [id, region] of [
+  ["regionTerminal", "terminal"],
+  ["regionCenter", "center"],
+  ["regionArtifacts", "artifacts"],
+]) {
+  button(id, () => {
+    activeRegion = region;
+    sizePanes();
+  });
 }
 new ResizeObserver(sizePanes).observe(main);
 button("leftFold", () => {
@@ -541,6 +667,12 @@ button("capture", async () => {
     `対象 ${shot.reference.path} · 版 ${shot.reference.version} · viewport ${shot.width}×${shot.height} · 原本hash ${shot.reference.sha256}`;
   if (!$("draft").value)
     $("draft").value = "この画面の指定箇所を、次のように修正したいです。\n\n";
+  const mapping = currentMapping(),
+    contract = currentContract();
+  if (mapping && mappingPath() === state.selected?.path) {
+    $("draft").value +=
+      `\n参照ラウンド: ${state.viewIntent} / ${contract.stage}\n議論対象: ${mapping.screen} / ${mapping.state}（自動再生なし）\nAC: ${mapping.ac}\n契約hash: ${contract.sha256}\n${state.workflow.mockups.isActive ? "" : "過去資料の引用です。過去ラウンドを暗黙に再開・変更しません。\n"}`;
+  }
   paint();
   layout();
 });

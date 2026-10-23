@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build renderer.js --target=browser --outfile=dist/renderer.js && cp index.html style.css dist/ && cp node_modules/@xterm/xterm/css/xterm.css dist/xterm.css",
+    "build": "bun build renderer.js --target=browser --outfile=dist/renderer.js && cp index.html style.css dist/ && cp node_modules/@xterm/xterm/css/xterm.css dist/xterm.css && bun build local-reader.ts --target=node --outfile=dist/local-reader.mjs",
     "start": "electron bootstrap.cjs"
   },
   "dependencies": {

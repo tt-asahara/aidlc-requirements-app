@@ -7,6 +7,7 @@ const actions = new Set([
   "local.create",
   "local.open",
   "files.refresh",
+  "workflow.view",
   "files.select",
   "preview.bounds",
   "preview.capture",

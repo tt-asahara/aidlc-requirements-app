@@ -7,10 +7,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
+  ClipboardItem,
   clipboard,
   dialog,
   ipcMain,
-  nativeImage,
   protocol,
   session,
   utilityProcess,
@@ -21,6 +21,7 @@ import {
   cliEnvironment,
   fetchHarness,
   harnessPlan,
+  harnessStatus,
   importHarness,
   inspectCli,
   LocalWorkspace,
@@ -32,6 +33,8 @@ import {
   safeName,
   stableSnapshot,
 } from "../../packages/workbench/manifest.mjs";
+
+import { readMockups, readProgress } from "./dist/local-reader.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 protocol.registerSchemesAsPrivileged([
@@ -45,6 +48,16 @@ app.setName("AI-DLC Local Team Workbench");
 if (process.env.V3_DATA_DIR)
   app.setPath("userData", path.resolve(process.env.V3_DATA_DIR));
 const data = app.getPath("userData");
+if (!process.env.V3_DATA_DIR && !app.requestSingleInstanceLock()) {
+  app.quit();
+  process.exit(0);
+}
+app.on("second-instance", () => {
+  if (window && !window.isDestroyed()) {
+    window.restore();
+    window.focus();
+  }
+});
 await fs.mkdir(data, { recursive: true, mode: 0o700 });
 const configPath = path.join(data, "settings.json");
 let config;
@@ -66,6 +79,9 @@ let workspace = new LocalWorkspace(config.store),
   previewReady = false,
   previewSceneHash = null,
   selected = null,
+  documentText = "",
+  workflow = { progress: null, mockups: null, message: null },
+  viewIntent = null,
   stable = { files: [], hash: "" },
   sharing = null,
   shared = null,
@@ -81,6 +97,7 @@ let workspace = new LocalWorkspace(config.store),
   watchTimer,
   pollBusy = false,
   harnessBundle = null,
+  appliedHarness = null,
   harnessPending = null,
   lastBackup = null,
   error = null,
@@ -108,11 +125,20 @@ const sendTerminal = (m) => {
 function state() {
   return {
     config,
+    runtime: {
+      electron: process.versions.electron,
+      node: process.versions.node,
+      platform: process.platform,
+      arch: process.arch,
+    },
     cli,
     active: workspace.active ? { ...workspace.active } : null,
     files: stable.files.map(({ data, ...f }) => f),
     hash: stable.hash,
     selected,
+    documentText,
+    workflow,
+    viewIntent,
     terminalRunning,
     ptyPid,
     terminalSize,
@@ -131,6 +157,7 @@ function state() {
     shared,
     recoveries: workspace.recoveries,
     error,
+    appliedHarness,
     harnessBundle: harnessBundle
       ? { id: harnessBundle.id, origin: harnessBundle.origin }
       : null,
@@ -185,14 +212,40 @@ async function refresh() {
   const root = workspace.active.root;
   try {
     const result = await stableSnapshot(root);
+    const harness = await harnessStatus(root);
+    let projection;
+    try {
+      const progress = await readProgress(root, false, false);
+      const intent = progress.intents.some((i) => i.dirName === viewIntent)
+        ? viewIntent
+        : (progress.active?.dirName ?? progress.intents[0]?.dirName ?? null);
+      projection = {
+        progress,
+        mockups: intent ? await readMockups(root, intent) : null,
+        message: null,
+      };
+      if (workspace.active?.root === root) viewIntent = intent;
+    } catch (e) {
+      projection = {
+        progress: null,
+        mockups: null,
+        message: `工程・契約を読めません: ${e.message}`,
+      };
+    }
+
     if (workspace.active?.root !== root) return;
     const changed = stable.hash !== result.hash;
     stable = result;
+    workflow = projection;
+    appliedHarness = harness.current;
+    lastBackup = harness.lastBackup;
     if (changed) {
       if (selected?.path) {
         const f = stable.files.find((f) => f.path === selected.path);
         if (f) {
           selected = { path: f.path, sha256: f.sha256 };
+          if (f.path.endsWith(".md") || f.path.endsWith(".txt"))
+            documentText = (await workspace.file(f.path)).toString("utf8");
           if (
             previewVisible &&
             (previewSceneHash !== sceneHash(selected.path) || !previewReady)
@@ -246,8 +299,20 @@ function hidePreview() {
 async function showFile(name) {
   const entry = stable.files.find((f) => f.path === name);
   if (!entry) throw new Error("安定した最新版にファイルがありません");
+  const fileIntent = name.match(
+    /^aidlc\/spaces\/[^/]+\/intents\/([^/]+)\//,
+  )?.[1];
+  if (
+    fileIntent &&
+    workflow.progress?.intents.some((i) => i.dirName === fileIntent) &&
+    viewIntent !== fileIntent
+  ) {
+    viewIntent = fileIntent;
+    workflow.mockups = await readMockups(workspace.active.root, fileIntent);
+  }
   selected = { path: name, sha256: entry.sha256 };
   if (name.endsWith(".html")) {
+    documentText = "";
     previewReady = false;
     const expectedScene = sceneHash(name);
     previewFile = name;
@@ -255,17 +320,18 @@ async function showFile(name) {
     previewVisible = true;
     preview.setVisible(true);
     await preview.webContents.loadURL(
-      `aidlc-preview://local/${previewToken}/${name.split("/").map(encodeURIComponent).join("/")}`,
+      `aidlc-preview://p-${previewToken}/${previewToken}/${name.split("/").map(encodeURIComponent).join("/")}`,
     );
     previewSceneHash = expectedScene;
     previewReady = sceneHash(name) === expectedScene;
     return { type: "html", selected };
   }
   hidePreview();
+  documentText = (await workspace.file(name)).toString("utf8");
   return {
     type: "document",
     selected,
-    text: (await workspace.file(name)).toString("utf8"),
+    text: documentText,
   };
 }
 function pidExists(pid) {
@@ -477,6 +543,23 @@ async function pollInside() {
 }
 async function initialize() {
   await app.whenReady();
+  if (/^[a-f0-9]{64}$/.test(config.prepared ?? "")) {
+    try {
+      const saved = JSON.parse(
+        await fs.readFile(
+          path.join(data, "harness-bundles", `${config.prepared}.json`),
+          "utf8",
+        ),
+      );
+      harnessBundle = {
+        id: saved.id,
+        origin: saved.origin,
+        files: saved.files.map(({ data, ...f }) => f),
+      };
+    } catch {
+      error = "準備済みハーネスを再読取できません";
+    }
+  }
   const entry = pathToFileURL(path.join(here, "dist/index.html")).href;
   window = new BrowserWindow({
     width: 1540,
@@ -504,7 +587,9 @@ async function initialize() {
   previewSession.setPermissionCheckHandler(() => false);
   previewSession.webRequest.onBeforeRequest((details, callback) =>
     callback({
-      cancel: !details.url.startsWith(`aidlc-preview://local/${previewToken}/`),
+      cancel: !details.url.startsWith(
+        `aidlc-preview://p-${previewToken}/${previewToken}/`,
+      ),
     }),
   );
   previewSession.protocol.handle("aidlc-preview", async (req) => {
@@ -512,7 +597,7 @@ async function initialize() {
       const url = new URL(req.url);
       if (
         !previewVisible ||
-        url.hostname !== "local" ||
+        url.hostname !== `p-${previewToken}` ||
         !workspace.active ||
         url.pathname.split("/")[1] !== previewToken
       )
@@ -523,6 +608,9 @@ async function initialize() {
         .map(decodeURIComponent)
         .join("/");
       safeName(name);
+      const directory = path.posix.dirname(previewFile);
+      if (directory !== "." && !name.startsWith(`${directory}/`))
+        throw new Error("preview directory denied");
       if (!stable.files.some((f) => f.path === name))
         throw new Error("not in manifest");
       const bytes = await readSafe(workspace.active.root, name);
@@ -568,8 +656,18 @@ async function initialize() {
   preview.setVisible(false);
   preview.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   preview.webContents.on("will-navigate", (event, url) => {
-    if (!url.startsWith(`aidlc-preview://local/${previewToken}/`))
+    const target = new URL(url);
+    const current = new URL(preview.webContents.getURL());
+    if (
+      target.protocol !== current.protocol ||
+      target.hostname !== current.hostname ||
+      target.pathname !== current.pathname
+    ) {
       event.preventDefault();
+      error =
+        "別のHTMLへ移る場合は右の成果物一覧から選択してください。撮影対象の取り違えを防ぎます";
+      push();
+    }
   });
   preview.webContents.on("will-attach-webview", (event) =>
     event.preventDefault(),
@@ -606,18 +704,24 @@ async function initialize() {
       return state();
     },
     "settings.chooseStore": async () => {
-      if (terminalRunning || workspace.active?.editable)
+      if (terminalRunning || (shared && workspace.active?.editable))
         throw new Error("編集/CLI終了後に変更してください");
       const r = await dialog.showOpenDialog(window, {
         properties: ["openDirectory", "createDirectory"],
         title: "案件の保存先",
       });
       if (!r.canceled) {
+        if (workspace.active?.editable)
+          workspace.quarantine("保存先変更前のローカル案件");
+        await preserveRecovery();
         config.store = path.join(
           await fs.realpath(r.filePaths[0]),
           "AI-DLC Workbench",
         );
+        const recoveries = workspace.recoveries;
         workspace = new LocalWorkspace(config.store);
+        workspace.recoveries = recoveries;
+        config.lastLocal = null;
         await save();
       }
       return state();
@@ -626,6 +730,8 @@ async function initialize() {
       if (terminalRunning) throw new Error("先にCLIを終了してください");
       shared = null;
       await workspace.local("ローカル案件");
+      config.lastLocal = { ...workspace.active };
+      await save();
       observe();
       return state();
     },
@@ -644,6 +750,8 @@ async function initialize() {
         )
           throw new Error("個人設定/ホーム全体は開けません");
         shared = null;
+        if (workspace.active?.editable)
+          workspace.quarantine("前のローカル案件");
         workspace.active = {
           root,
           project: randomUUID(),
@@ -651,8 +759,20 @@ async function initialize() {
           editable: true,
           lease: true,
         };
+        config.lastLocal = { ...workspace.active };
+        await save();
         observe();
       }
+      return state();
+    },
+    "workflow.view": async (b) => {
+      if (!workflow.progress?.intents.some((i) => i.dirName === b.intent))
+        throw new Error("登録済みラウンドを選択してください");
+      viewIntent = b.intent;
+      selected = null;
+      documentText = "";
+      hidePreview();
+      await refresh();
       return state();
     },
     "files.refresh": async () => {
@@ -777,7 +897,19 @@ async function initialize() {
       const file = path.join(dir, `${shot.id ?? b.id}.png`);
       await fs.writeFile(file, bytes, { mode: 0o600 });
       const text = `${b.text}\n\n画像ファイル参照: @${JSON.stringify(file)}\n対象: ${shot.path}\n版: ${shot.version}\n原本SHA256: ${shot.sha256}\n画像SHA256: ${hash(bytes)}`;
-      clipboard.write({ text, image: nativeImage.createFromBuffer(bytes) });
+      await clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([text], { type: "text/plain" }),
+          "image/png": new Blob([new Uint8Array(bytes)], { type: "image/png" }),
+        }),
+      ]);
+      if (
+        (await clipboard.readText()) !== text ||
+        !(await clipboard.has("image/png"))
+      )
+        throw new Error(
+          "画像と下書きのコピーを確認できません。本文を保持します",
+        );
       return {
         copied: true,
         text,
@@ -963,6 +1095,7 @@ async function initialize() {
           path.join(data, "harness-bundles"),
         );
         config.prepared = harnessBundle.id;
+        harnessPending = null;
         await save();
       }
       return state();
@@ -976,12 +1109,21 @@ async function initialize() {
           "utf8",
         ),
       );
-      harnessPending = await harnessPlan(workspace.active.root, bundle);
+      harnessPending = {
+        ...(await harnessPlan(workspace.active.root, bundle)),
+        root: workspace.active.root,
+        epoch: workspace.active.epoch,
+      };
       return state();
     },
     "harness.apply": async (b) => {
       editable();
-      if (!harnessPending) throw new Error("差分を確認してください");
+      if (
+        !harnessPending ||
+        harnessPending.root !== workspace.active.root ||
+        harnessPending.epoch !== workspace.active.epoch
+      )
+        throw new Error("現在の案件の差分を確認してください");
       lastBackup = await applyHarness(workspace.active.root, harnessPending, {
         running: terminalRunning,
         securityReviewed: b.securityReviewed === true,
@@ -992,6 +1134,7 @@ async function initialize() {
       };
       await save();
       harnessPending = null;
+      await refresh();
       return state();
     },
     "harness.rollback": async (b) => {
@@ -1002,6 +1145,7 @@ async function initialize() {
         securityReviewed: b.securityReviewed === true,
       });
       lastBackup = null;
+      await refresh();
       return state();
     },
   };
@@ -1029,9 +1173,15 @@ async function initialize() {
         "terminal.stop",
         "preview.bounds",
       ].includes(action);
+      const rootBefore = workspace.active?.root;
       const result = await (independent
         ? actions[action](body)
         : inContext(() => actions[action](body)));
+      if (workspace.active?.root !== rootBefore) {
+        harnessPending = null;
+        appliedHarness = null;
+        lastBackup = null;
+      }
       if (
         ![
           "state",
@@ -1048,6 +1198,27 @@ async function initialize() {
       throw new Error(e.message);
     }
   });
+  if (
+    config.lastLocal &&
+    !config.lastLocal.epoch &&
+    config.lastLocal.version === "local"
+  ) {
+    try {
+      const saved = config.lastLocal,
+        root = await fs.realpath(saved.root);
+      if (
+        root === os.homedir() ||
+        root === "/" ||
+        /\/(\.claude|\.aws|\.ssh)(\/|$)/.test(root) ||
+        !(await fs.stat(root)).isDirectory()
+      )
+        throw new Error("unsafe project");
+      workspace.active = { ...saved, root, editable: true, lease: true };
+      observe();
+    } catch {
+      error = "前回のローカル案件を開けません。案件を選び直してください";
+    }
+  }
   await window.loadURL(entry);
   window.on("resize", push);
   window.on("close", (event) => {
@@ -1058,6 +1229,7 @@ async function initialize() {
   });
   const heartbeat = setInterval(() => {
     ptyWorker?.postMessage({ type: "heartbeat" });
+    serviceWorker?.postMessage({ type: "heartbeat" });
   }, 2000);
   const polling = setInterval(() => void poll(), 3000);
   const fallback = setInterval(() => {

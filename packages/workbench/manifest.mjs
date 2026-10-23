@@ -34,7 +34,9 @@ export function safeName(name) {
     name
       .split("/")
       .some((p) => !p || p === "." || p === ".." || p.startsWith(".")) ||
-    !extensions.has(path.posix.extname(name).toLowerCase()) ||
+    (!extensions.has(path.posix.extname(name).toLowerCase()) &&
+      name !== "aidlc/active-space" &&
+      !/^aidlc\/spaces\/[^/]+\/intents\/active-intent$/.test(name)) ||
     /(^|\/)(node_modules|audit|audits|logs|sessions|credentials|secrets|recovery|backups)(\/|$)/i.test(
       name,
     ) ||
@@ -103,7 +105,7 @@ export async function readSafe(root, name) {
   );
   try {
     const before = await handle.stat();
-    if (!before.isFile() || before.size > 2 * 1024 * 1024)
+    if (!before.isFile() || before.nlink !== 1 || before.size > 2 * 1024 * 1024)
       throw new Error("通常ファイル/容量を確認してください");
     const bytes = await handle.readFile();
     const after = await handle.stat();
@@ -113,6 +115,14 @@ export async function readSafe(root, name) {
       before.size !== after.size
     )
       throw new Error("書込中です");
+    const final = await fs.lstat(cursor);
+    if (
+      final.isSymbolicLink() ||
+      final.ino !== after.ino ||
+      final.dev !== after.dev ||
+      (await fs.realpath(cursor)) !== cursor
+    )
+      throw new Error("読取中にパスが変わりました");
     return bytes;
   } finally {
     await handle.close();

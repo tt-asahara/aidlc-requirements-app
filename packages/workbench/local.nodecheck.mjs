@@ -7,6 +7,7 @@ import {
   applyHarness,
   cliEnvironment,
   harnessPlan,
+  harnessStatus,
   importHarness,
   LocalWorkspace,
   rollbackHarness,
@@ -147,4 +148,38 @@ test("Team CLI environment excludes inherited Bedrock/API credentials without re
     ANTHROPIC_API_KEY: "private",
   });
   assert.deepEqual(env, { HOME: "/home/person", PATH: "/bin" });
+});
+
+test("interrupted harness apply restores only known before/after bytes, and unsafe metadata is refused", async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), "v3-recovery-"));
+  try {
+    const target = path.join(base, "target"),
+      source = path.join(base, "source");
+    await fs.mkdir(target);
+    await fs.mkdir(path.join(source, ".claude/skills"), { recursive: true });
+    await fs.writeFile(path.join(source, ".claude/skills/a.md"), "a");
+    await fs.writeFile(path.join(source, ".claude/skills/b.md"), "b");
+    const bundle = await importHarness(source, path.join(base, "cache"));
+    const full = JSON.parse(
+      await fs.readFile(path.join(base, "cache", `${bundle.id}.json`)),
+    );
+    const saved = await applyHarness(target, await harnessPlan(target, full));
+    const receiptPath = path.join(saved.backup, "receipt.json"),
+      receipt = JSON.parse(await fs.readFile(receiptPath));
+    receipt.state = "prepared";
+    await fs.writeFile(receiptPath, JSON.stringify(receipt));
+    await fs.unlink(path.join(target, ".claude/skills/b.md"));
+    await fs.unlink(path.join(target, ".v3-harness/current.json"));
+    const status = await harnessStatus(target);
+    assert(status.lastBackup.interrupted);
+    await rollbackHarness(target, status.lastBackup.backup);
+    await assert.rejects(fs.stat(path.join(target, ".claude/skills/a.md")));
+    assert.equal((await harnessStatus(target)).current, null);
+    const unsafe = path.join(base, "unsafe");
+    await fs.mkdir(unsafe);
+    await fs.symlink(base, path.join(unsafe, ".v3-harness"));
+    await assert.rejects(harnessPlan(unsafe, full), /安全/);
+  } finally {
+    await fs.rm(base, { recursive: true, force: true });
+  }
 });

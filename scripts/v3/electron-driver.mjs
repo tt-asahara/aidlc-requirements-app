@@ -3,16 +3,27 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { chromium } from "@playwright/test";
-export async function launchDesktop(directory) {
+export async function launchDesktop(directory, options = {}) {
   directory ??= await fs.mkdtemp(path.join(os.tmpdir(), "v3-electron-"));
-  const executable = path.resolve(
-    "apps/desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
-  );
+  const executable =
+    options.executable ??
+    path.resolve(
+      "apps/desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+    );
   const process = spawn(
     executable,
-    ["--remote-debugging-port=0", path.resolve("apps/desktop/bootstrap.cjs")],
+    [
+      "--remote-debugging-port=0",
+      ...(options.packaged
+        ? []
+        : [options.bootstrap ?? path.resolve("apps/desktop/bootstrap.cjs")]),
+    ],
     {
-      env: { ...globalThis.process.env, V3_DATA_DIR: directory },
+      env: {
+        ...globalThis.process.env,
+        ...options.env,
+        V3_DATA_DIR: directory,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -23,6 +34,10 @@ export async function launchDesktop(directory) {
         reject(new Error(`Electron endpoint timeout: ${logs.slice(-4000)}`)),
       15000,
     );
+    process.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
     process.stderr.on("data", (chunk) => {
       logs = (logs + String(chunk)).slice(-16000);
       const match = logs.match(/DevTools listening on (ws:\/\/[^\s]+)/);
