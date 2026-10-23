@@ -41,6 +41,7 @@ import {
   oidcPolicy,
   secureJson,
 } from "../../packages/workbench/oidc.mjs";
+import { projectDialogDirectory } from "../../packages/workbench/project-dialog.mjs";
 import {
   downloadRelease,
   listReleases,
@@ -141,6 +142,7 @@ const sendTerminal = (m) => {
 function state() {
   return {
     config,
+    newProjectDirectory: path.join(config.store, "local"),
     localCreation,
     runtime: {
       electron: process.versions.electron,
@@ -873,7 +875,13 @@ async function initialize() {
       if (terminalRunning) throw new Error("先にCLIを終了してください");
       const r = await dialog.showOpenDialog(window, {
         properties: ["openDirectory"],
-        title: "既存のローカル案件",
+        title: "既存の案件フォルダを開く",
+        defaultPath: await projectDialogDirectory({
+          root: workspace.active?.root,
+          store: config.store,
+          documents: app.getPath("documents"),
+          home: app.getPath("home"),
+        }),
       });
       if (!r.canceled) {
         const root = await fs.realpath(r.filePaths[0]);

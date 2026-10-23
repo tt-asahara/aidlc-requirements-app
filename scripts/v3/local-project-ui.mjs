@@ -45,6 +45,10 @@ try {
     await expect(
       app.page.getByRole("button", { name: "バージョンを表示", exact: true }),
     ).toBeVisible();
+  if (!baseline)
+    await expect(
+      app.page.getByRole("button", { name: "新しい案件を作成", exact: true }),
+    ).toBeVisible();
   const first = await create();
   const firstName = await app.page.locator("#projectName").innerText();
   await fs.writeFile(

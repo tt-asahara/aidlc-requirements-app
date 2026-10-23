@@ -10,7 +10,7 @@ const call = (action, body = {}) =>
   page.evaluate(([a, b]) => window.workbench.invoke(a, b), [action, body]);
 try {
   await page
-    .getByRole("button", { name: "ローカル案件を作成", exact: true })
+    .getByRole("button", { name: "新しい案件を作成", exact: true })
     .click();
   const state = await call("state"),
     root = state.active.root;

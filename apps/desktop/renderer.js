@@ -152,6 +152,9 @@ function render(s) {
   $("projectName").textContent =
     s.shared?.name ?? active?.name ?? (active ? "ローカル案件" : "案件未選択");
   $("projectLocation").textContent = active ? `保存先: ${active.root}` : "";
+  $("newProjectLocation").textContent = s.newProjectDirectory
+    ? `新しい案件の保存先: ${s.newProjectDirectory}（案件ごとに専用フォルダを作成）`
+    : "";
   const created = s.localCreation?.root === active?.root && !!active;
   $("localCreationNotice").hidden = !created;
   $("localCreationNotice").textContent = created
@@ -159,13 +162,13 @@ function render(s) {
     : "";
   $("newLocal").disabled =
     creatingLocal || s.terminalRunning || (s.shared && active?.editable);
-  $("newLocal").textContent = creatingLocal ? "作成中…" : "ローカル案件を作成";
+  $("newLocal").textContent = creatingLocal ? "作成中…" : "新しい案件を作成";
   $("createAndStart").disabled = creatingLocal;
   $("localCreateHint").textContent = s.terminalRunning
     ? "案件の作成・切替は、現在のCLIを本人が終了してから行えます。"
     : s.shared && active?.editable
       ? "新しい案件の作成は、現在の共有編集を終了してから行えます。"
-      : "新しい案件は別フォルダへ保存します。既存の案件は上書きしません。";
+      : "「新しい案件を作成」は成果物を保存する新しいフォルダをこのPCに作ります。「案件を開く」は既存フォルダを使います。";
   $("version").textContent = s.shared
     ? `共有版 ${s.shared.head.slice(0, 8)}・epoch ${s.shared.epoch}`
     : "ローカル保存";
@@ -198,7 +201,7 @@ function render(s) {
   $("startCli").disabled = s.terminalRunning || (active && !active.editable);
   $("terminalHint").textContent = active
     ? "本人のTeamログインをCLI内で使用します。送信・権限承認は本人操作です。"
-    : "最初にローカル案件を作成するか、案件フォルダを開いてください。起動ボタンからも選べます。";
+    : "最初に新しい案件を作成するか、案件フォルダを開いてください。起動ボタンからも選べます。";
   $("checkCli").disabled = s.terminalRunning;
   $("stopCli").disabled = !s.terminalRunning;
   $("terminalStatus").textContent = s.terminalRunning

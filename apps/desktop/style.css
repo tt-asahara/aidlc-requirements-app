@@ -427,7 +427,8 @@ body [hidden],
   font-size: 12px;
   overflow-wrap: anywhere;
 }
-#projectLocation {
+#projectLocation,
+#newProjectLocation {
   color: #526257;
   user-select: text;
 }

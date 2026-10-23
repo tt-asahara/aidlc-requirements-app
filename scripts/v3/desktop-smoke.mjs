@@ -15,7 +15,7 @@ try {
     }),
   );
   await page
-    .getByRole("button", { name: "ローカル案件を作成", exact: true })
+    .getByRole("button", { name: "新しい案件を作成", exact: true })
     .click();
   await page
     .getByRole("button", { name: "バージョンを表示", exact: true })
