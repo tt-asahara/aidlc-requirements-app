@@ -1,0 +1,366 @@
+:root {
+  font-family:
+    Inter, -apple-system, BlinkMacSystemFont, "Noto Sans JP", sans-serif;
+  color: #24352e;
+  background: #f3f4ef;
+  font-size: 13px;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button {
+  border: 1px solid #cbd5cb;
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: #fff;
+  color: #214b3b;
+  cursor: pointer;
+}
+button:hover {
+  background: #eef4ed;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+canvas:focus-visible {
+  outline: 3px solid #247d83;
+  outline-offset: 2px;
+}
+input,
+textarea,
+select {
+  border: 1px solid #bccabd;
+  border-radius: 6px;
+  padding: 8px;
+  background: white;
+}
+header {
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: #fff;
+  border-bottom: 1px solid #d8ded4;
+}
+header strong {
+  font-size: 23px;
+  letter-spacing: -1px;
+  color: #24533e;
+}
+nav,
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.muted,
+small {
+  color: #718178;
+}
+small {
+  letter-spacing: 1.3px;
+  font-size: 10px;
+}
+#status {
+  padding: 8px 20px;
+  background: #e4ede1;
+  color: #31583e;
+}
+#error {
+  padding: 10px 20px;
+  background: #fff1dc;
+  color: #7a3d13;
+  white-space: pre-wrap;
+}
+.projectbar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #d6ded1;
+  flex-wrap: wrap;
+}
+.projectbar strong {
+  font-size: 15px;
+}
+body {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+header,
+.projectbar,
+#status,
+#error {
+  flex-shrink: 0;
+}
+main {
+  display: grid;
+  grid-template-columns: 480px 8px minmax(0, 1fr) 8px 260px;
+  flex: 1;
+  min-height: 0;
+}
+.pane-resizer {
+  margin: 0;
+  border: 0;
+  min-width: 0;
+  width: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  background: #e2e8dc;
+  position: relative;
+}
+.pane-resizer::after {
+  content: "";
+  position: absolute;
+  top: 40%;
+  bottom: 40%;
+  left: 3px;
+  width: 2px;
+  background: #a3b8a2;
+  border-radius: 2px;
+}
+.pane-resizer:hover,
+.pane-resizer:focus-visible {
+  background: #abc7af;
+  outline: 2px solid #247d83;
+  outline-offset: -2px;
+}
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.terminal-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.terminal-pane > :not(#terminal) {
+  flex-shrink: 0;
+}
+.terminal-pane /* xterm owns cell spacing; keep application typography outside its renderer. */
+#terminal .xterm {
+  height: 100%;
+  padding: 8px;
+  letter-spacing: 0;
+}
+#terminal .xterm-screen {
+  text-align: left;
+}
+details {
+  max-height: 110px;
+  overflow: auto;
+}
+.terminal-pane,
+#center,
+#artifacts {
+  padding: 15px;
+  overflow: auto;
+  min-width: 0;
+}
+.terminal-pane {
+  background: #fbfcf8;
+  border-right: 1px solid #d5ddd2;
+}
+#center {
+  background: #f0f2ed;
+  display: flex;
+  flex-direction: column;
+}
+#artifacts {
+  background: #fbfcf8;
+  border-left: 1px solid #d5ddd2;
+}
+.pane-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 3px 0;
+}
+.hint {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #64756b;
+}
+#terminal {
+  background: #17251e;
+  padding: 0;
+  border-radius: 8px;
+  flex: 1;
+  min-height: 120px;
+  overflow: hidden;
+}
+details {
+  margin-top: 14px;
+}
+summary {
+  cursor: pointer;
+  color: #49684e;
+}
+#previewArea {
+  position: relative;
+  min-height: 220px;
+  flex: 1;
+  background: white;
+  border: 1px solid #d4dbce;
+  border-radius: 8px;
+  overflow: hidden;
+}
+#empty {
+  padding: 60px 25px;
+  line-height: 2;
+  color: #7a897e;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+  line-height: 1.6;
+}
+#document {
+  padding: 20px;
+  height: 100%;
+  overflow: auto;
+  font-size: 13px;
+}
+.file-group h3 {
+  font-size: 11px;
+  color: #70806f;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 22px 0 8px;
+}
+.file-group button {
+  display: block;
+  text-align: left;
+  width: 100%;
+  margin: 5px 0;
+  overflow-wrap: anywhere;
+  border-color: transparent;
+  background: transparent;
+}
+.file-group button.active {
+  background: #e0ebda;
+  border-color: #b2c5aa;
+}
+#annotation {
+  background: white;
+  border: 1px solid #c7d4c1;
+  border-radius: 8px;
+  padding: 12px;
+}
+#canvasWrap {
+  width: 100%;
+  overflow: auto;
+  max-height: 450px;
+  margin: 10px 0;
+  background: #edf1e9;
+}
+canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+#annotationReference {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+textarea {
+  width: 100%;
+  resize: vertical;
+}
+dialog {
+  width: min(820px, 90vw);
+  max-height: 90vh;
+  overflow: auto;
+  border: 1px solid #b8c9b4;
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 20px 90px #182c3333;
+}
+dialog::backdrop {
+  background: #17281d88;
+}
+dialog label {
+  display: block;
+  margin: 12px 0;
+}
+dialog input:not([type="checkbox"]) {
+  width: 100%;
+  margin-top: 5px;
+}
+dialog pre {
+  padding: 12px;
+  background: #f0f3ed;
+  max-height: 270px;
+  overflow: auto;
+}
+output {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: #edf4e8;
+  padding: 10px;
+}
+#history button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 5px 0;
+}
+#comments p {
+  padding: 8px;
+  border-bottom: 1px solid #d5dfd0;
+  white-space: pre-wrap;
+}
+#saved {
+  font-size: 11px;
+  margin-right: auto;
+}
+code {
+  background: #e7ece2;
+}
+body [hidden] {
+  display: none;
+}
+@media (max-width: 1100px) {
+  header .muted {
+    display: none;
+  }
+  .pane-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .projectbar button {
+    font-size: 11px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto;
+  }
+}
