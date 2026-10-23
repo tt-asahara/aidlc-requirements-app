@@ -66,6 +66,10 @@ try {
   await testBrowser(a);
   await testBrowser(b);
   await prepare(a);
+  await a.page.locator("#shareUrl").fill("https://different.example.invalid");
+  await a.page.locator("#connectOidc").click();
+  await expect(a.page.locator("#error")).toContainText("確認した接続先");
+  await a.page.locator("#shareUrl").fill(service.url);
   await login(a);
   await a.page.locator("#projectInput").fill("HTTPS・合成予約アプリ");
   await a.page.locator("#createShared").click();

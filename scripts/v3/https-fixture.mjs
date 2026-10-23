@@ -121,6 +121,12 @@ export async function httpsFixture() {
         code_challenge_methods_supported: ["S256"],
       });
     if (u.pathname === "/jwks") return json(200, { keys: [jwk] });
+    if (u.pathname === "/redirect") {
+      res.writeHead(302, {
+        Location: "https://not-the-configured-service.example.invalid",
+      });
+      return res.end();
+    }
     if (u.pathname === "/authorize") {
       const code = randomUUID();
       codes.set(code, {

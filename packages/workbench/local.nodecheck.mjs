@@ -225,15 +225,26 @@ test("corrupt current metadata remains readable and validated journal restores s
     const bundle = JSON.parse(
       await fs.readFile(path.join(base, "cache", `${brief.id}.json`)),
     );
-    const applied = await applyHarness(root, await harnessPlan(root, bundle));
-    const journalFile = path.join(applied.backup, "receipt.json");
-    const journal = JSON.parse(await fs.readFile(journalFile));
-    journal.state = "prepared";
-    delete journal.integrity;
-    await fs.writeFile(journalFile, JSON.stringify(journal));
-    const dest = path.join(root, ".claude/skills/test.md"),
+    const dest = path.join(await fs.realpath(root), ".claude/skills/test.md"),
       stage = `${dest}.v3-stage`;
-    await fs.rename(dest, stage); // Stop after staging, before the destination rename.
+    const plan = await harnessPlan(root, bundle),
+      rename = fs.rename;
+    fs.rename = async (from, to) => {
+      if (to === dest)
+        throw Object.assign(
+          new Error("injected interruption before destination rename"),
+          { code: "EIO" },
+        );
+      return rename(from, to);
+    };
+    try {
+      await assert.rejects(applyHarness(root, plan), /injected interruption/);
+    } finally {
+      fs.rename = rename;
+    }
+    const applied = (await harnessStatus(root)).lastBackup;
+    assert(applied.interrupted);
+    assert.equal(await fs.readFile(stage, "utf8"), "verified bytes");
     await fs.writeFile(
       path.join(root, ".v3-harness/current.json"),
       '{"bundle":',

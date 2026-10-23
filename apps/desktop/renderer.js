@@ -247,6 +247,11 @@ function render(s) {
   $("remoteIdentity").textContent = remote
     ? `接続先: ${remote.url}\n本人認証: ${remote.policy.issuer}\nclient: ${remote.policy.clientId}\nMFA: amr ${remote.policy.mfa.amr.join(", ")} / acr ${remote.policy.mfa.acr.join(", ")}\n${s.loginPending ? "本人のブラウザー操作を待っています。CLIのログインは使用しません。" : "接続先と本人認証先を確認してから、ログインを開始してください。"}`
     : "別PC共有: HTTPS接続先を確認してください。IdP設定とサーバー配置は管理者の作業です。";
+  if (s.sharing)
+    $("remoteIdentity").textContent +=
+      s.sharing.adapter === "oidc-mfa"
+        ? `\n接続済み: ${s.sharing.url}（OIDC署名・MFA claim確認済み）`
+        : "\n接続済み: このPCだけの招待検証（MFA確認なし）";
   $("connectOidc").disabled = !remote || s.loginPending || !!s.sharing;
   $("prepareRemote").disabled = s.loginPending || !!s.sharing;
   $("cancelLogin").disabled = !s.loginPending;

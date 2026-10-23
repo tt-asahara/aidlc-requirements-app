@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import https from "node:https";
+import path from "node:path";
 import { test } from "node:test";
 import { httpsFixture } from "../../scripts/v3/https-fixture.mjs";
 import { record } from "../../scripts/v3/record.mjs";
@@ -15,6 +18,26 @@ test("HTTPS shared authority: signed OIDC/MFA, nonce, recipient membership, nati
   let service;
   try {
     service = await fixture.startShared();
+    await assert.rejects(
+      secureJson(`${fixture.issuer}/redirect`),
+      /リダイレクト/,
+    );
+    const wrongHost = https.createServer(
+      {
+        key: await fs.readFile(path.join(fixture.directory, "ca.key")),
+        cert: await fs.readFile(fixture.caFile),
+      },
+      (_req, res) => res.end("{}"),
+    );
+    await new Promise((r) => wrongHost.listen(0, "127.0.0.1", r));
+    try {
+      await assert.rejects(
+        secureJson(`https://127.0.0.1:${wrongHost.address().port}`),
+        (e) => e.code === "ERR_TLS_CERT_ALTNAME_INVALID",
+      );
+    } finally {
+      await new Promise((r) => wrongHost.close(r));
+    }
     const call = (route, method = "GET", body, token) =>
       secureJson(service.url + route, {
         method,
@@ -280,6 +303,8 @@ test("HTTPS shared authority: signed OIDC/MFA, nonce, recipient membership, nati
           syntheticIssuer: true,
           realMfaIdp: false,
           signature: true,
+          certificateHostMismatchRejected: true,
+          redirectsRejected: true,
           issuerAudienceNonceExpiry: true,
           mfaClaimsEnforced: true,
           pkceNativeCallback: true,

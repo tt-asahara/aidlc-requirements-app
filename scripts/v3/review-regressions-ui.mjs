@@ -2,10 +2,27 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { expect } from "@playwright/test";
+import {
+  applyHarness,
+  harnessPlan,
+  importHarness,
+} from "../../packages/workbench/local.mjs";
 import { launchDesktop } from "./electron-driver.mjs";
 import { record } from "./record.mjs";
 
-const app = await launchDesktop();
+const packaged = process.argv.includes("--packaged");
+const receipt = packaged
+  ? JSON.parse(await fs.readFile("../evidence/v3/package-current.json"))
+  : null;
+const app = await launchDesktop(
+  undefined,
+  packaged
+    ? {
+        packaged: true,
+        executable: path.join(receipt.bundle, "Contents/MacOS/Electron"),
+      }
+    : {},
+);
 const call = (action, body = {}) =>
   app.page.evaluate(([a, b]) => window.workbench.invoke(a, b), [action, body]);
 try {
@@ -61,9 +78,62 @@ try {
   await app.page.screenshot({
     path: path.join(app.directory, "comment-draft-context.png"),
   });
+  await call("share.disconnect");
+  await app.page.locator("#newLocal").click();
+  const localRoot = (await call("state")).active.root;
+  const source = path.join(app.directory, "synthetic-harness");
+  await fs.mkdir(path.join(source, ".claude/skills"), { recursive: true });
+  await fs.writeFile(
+    path.join(source, ".claude/skills/review.md"),
+    "synthetic harness",
+  );
+  const prepared = await importHarness(
+    source,
+    path.join(app.directory, "prepared"),
+  );
+  const bundle = JSON.parse(
+    await fs.readFile(
+      path.join(app.directory, "prepared", `${prepared.id}.json`),
+    ),
+  );
+  await applyHarness(localRoot, await harnessPlan(localRoot, bundle));
+  await fs.writeFile(
+    path.join(localRoot, ".v3-harness/current.json"),
+    '{"bundle":',
+  );
+  await fs.writeFile(
+    path.join(localRoot, "visible.md"),
+    "Artifact stays readable despite corrupt harness metadata",
+  );
+  await call("files.refresh");
+  await expect(app.page.locator("#fileList")).toContainText("visible.md");
+  await app.page.locator("#settings").click();
+  await expect(app.page.locator("#settingsInfo")).toContainText(
+    "直前へ復元可能",
+  );
+  await app.page.locator("#rollbackHarness").click();
+  await expect(app.page.locator("#settingsInfo")).toContainText("未適用");
+  await expect
+    .poll(async () => {
+      try {
+        await fs.stat(path.join(localRoot, ".claude/skills/review.md"));
+        return true;
+      } catch (e) {
+        if (e.code !== "ENOENT") throw e;
+        return false;
+      }
+    })
+    .toBe(false);
+  await expect(app.page.locator("#settingsInfo")).toContainText(
+    "バックアップなし",
+  );
   console.log(
     JSON.stringify(
       await record("review-regressions-ui", {
+        packagedUi: packaged,
+        runtimeCommit: (await call("state")).runtime.buildCommit,
+        corruptMetadataArtifactsReadable: true,
+        corruptMetadataUiRollback: true,
         commentProjectPinned: true,
         commentVersionPinned: true,
         projectSwitchPreservesDrafts: true,
