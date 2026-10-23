@@ -395,6 +395,13 @@ function checkReceipt(receipt) {
   const names = new Set();
   for (const f of receipt.files) {
     bundleName(f.path);
+    if (
+      f.stage !== undefined &&
+      (typeof f.stage !== "string" ||
+        !f.stage.startsWith(`${f.path}.v3-stage-`) ||
+        !/^[0-9a-f-]{36}$/.test(f.stage.slice(`${f.path}.v3-stage-`.length)))
+    )
+      throw new Error("復旧記録の一時パスが不正です");
     if (names.has(f.path.toLowerCase()))
       throw new Error("復旧記録が重複しています");
     names.add(f.path.toLowerCase());
@@ -576,23 +583,27 @@ export async function applyHarness(
   await fs.mkdir(backup, { recursive: true, mode: 0o700 });
   const receipt = {
     bundle: plan.bundle,
-    files: plan.changes,
+    files: plan.changes.map((f) => ({
+      ...f,
+      stage: `${f.path}.v3-stage-${path.basename(backup)}`,
+    })),
     previous: plan.previous,
     at: new Date().toISOString(),
     state: "prepared",
   };
   await saveReceipt(path.join(backup, "receipt.json"), receipt);
-  for (const f of plan.changes) {
+  for (const f of receipt.files) {
     const dest = await targetFile(root, f.path, true);
     if (f.after === null) {
       await fs.unlink(dest);
       continue;
     }
-    await fs.writeFile(`${dest}.v3-stage`, Buffer.from(f.after, "base64"), {
+    const stage = await targetFile(root, f.stage, true);
+    await fs.writeFile(stage, Buffer.from(f.after, "base64"), {
       flag: "wx",
       mode: 0o600,
     });
-    await fs.rename(`${dest}.v3-stage`, dest);
+    await fs.rename(stage, dest);
   }
   await atomicJson(path.join(root, ".v3-harness/current.json"), {
     bundle: plan.bundle,
@@ -644,14 +655,27 @@ export async function rollbackHarness(
   // A stage file is ours only when the validated journal records its exact bytes.
   const stages = [];
   for (const f of receipt.files) {
-    const stage = `${await targetFile(root, f.path)}.v3-stage`;
+    if (f.stage && f.stage !== `${f.path}.v3-stage-${path.basename(real)}`)
+      throw new Error("一時ファイルは別の復旧記録のものです");
+    // A committed install has already renamed its stage. A later file at that
+    // name belongs to the user; never infer ownership from identical bytes alone.
+    if (receipt.state === "committed") continue;
+    const name = f.stage ?? `${f.path}.v3-stage`;
+    if (
+      receipt.state === "restoring" &&
+      receipt.stagesToRemove &&
+      !receipt.stagesToRemove.includes(name)
+    )
+      continue;
+    const stage = await targetFile(root, name);
     const bytes = await maybe(stage);
     if (bytes) {
       if (f.after === null || hash(bytes) !== f.afterHash)
         throw new Error("一時ファイルに別の変更があります。削除せず保全します");
-      stages.push(stage);
+      stages.push({ path: stage, name, sha256: f.afterHash });
     }
   }
+  receipt.stagesToRemove = stages.map((s) => s.name);
   receipt.state = "restoring";
   await saveReceipt(path.join(real, "receipt.json"), receipt);
   for (const f of receipt.files) {
@@ -662,7 +686,13 @@ export async function rollbackHarness(
         mode: 0o600,
       });
   }
-  for (const stage of stages) await fs.unlink(stage);
+  for (const stage of stages) {
+    const bytes = await maybe(stage.path);
+    if (!bytes) continue;
+    if (hash(bytes) !== stage.sha256)
+      throw new Error("復元中に一時ファイルが変更されました。保全します");
+    await fs.unlink(stage.path);
+  }
   const currentPath = path.join(root, ".v3-harness/current.json");
   if (receipt.previous) await atomicJson(currentPath, receipt.previous);
   else await fs.rm(currentPath, { force: true });

@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 const exec = promisify(execFile);
 if (process.platform !== "darwin" || process.arch !== "arm64")
   throw new Error("This package target is macOS arm64");
+// Never label cached renderer bytes as a new source revision.
+await exec("bun", ["run", "v3:build"]);
 const require = createRequire(path.resolve("apps/desktop/package.json"));
 const electron = require("electron"),
   pty = path.dirname(require.resolve("node-pty/package.json"));

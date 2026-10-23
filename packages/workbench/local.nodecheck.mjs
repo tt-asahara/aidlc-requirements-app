@@ -225,8 +225,7 @@ test("corrupt current metadata remains readable and validated journal restores s
     const bundle = JSON.parse(
       await fs.readFile(path.join(base, "cache", `${brief.id}.json`)),
     );
-    const dest = path.join(await fs.realpath(root), ".claude/skills/test.md"),
-      stage = `${dest}.v3-stage`;
+    const dest = path.join(await fs.realpath(root), ".claude/skills/test.md");
     const plan = await harnessPlan(root, bundle),
       rename = fs.rename;
     fs.rename = async (from, to) => {
@@ -244,6 +243,11 @@ test("corrupt current metadata remains readable and validated journal restores s
     }
     const applied = (await harnessStatus(root)).lastBackup;
     assert(applied.interrupted);
+    const stage = path.join(
+      root,
+      JSON.parse(await fs.readFile(path.join(applied.backup, "receipt.json")))
+        .files[0].stage,
+    );
     assert.equal(await fs.readFile(stage, "utf8"), "verified bytes");
     await fs.writeFile(
       path.join(root, ".v3-harness/current.json"),
@@ -262,11 +266,22 @@ test("corrupt current metadata remains readable and validated journal restores s
     assert.equal((await harnessStatus(root)).current, null);
     const next = await applyHarness(root, await harnessPlan(root, bundle));
     assert.equal(await fs.readFile(dest, "utf8"), "verified bytes");
+    const committedStage = path.join(
+      root,
+      JSON.parse(await fs.readFile(path.join(next.backup, "receipt.json")))
+        .files[0].stage,
+    );
+    await fs.writeFile(committedStage, "verified bytes"); // User-created after the committed stage was already renamed.
     // Also recover a committed install when only the metadata was truncated.
     await fs.writeFile(path.join(root, ".v3-harness/current.json"), "{");
     assert.equal((await harnessStatus(root)).lastBackup.backup, next.backup);
     await rollbackHarness(root, next.backup);
     await assert.rejects(fs.stat(dest), { code: "ENOENT" });
+    assert.equal(
+      await fs.readFile(committedStage, "utf8"),
+      "verified bytes",
+      "never delete later user files, even at the old stage name with identical bytes",
+    );
     const tampered = JSON.parse(
       await fs.readFile(path.join(next.backup, "receipt.json")),
     );
