@@ -47,7 +47,7 @@ The explicit optional `official-harness-check.mjs <local prepared distribution>`
 - The app neither reads Claude login tokens nor verifies subscription/billing identity. The user operates official CLI auth. No automated Team model/image-input or long AI-DLC workflow verification was performed; prior V2 model runs are not V3 evidence.
 - Existing user-controlled/external editors cannot be made fully atomic with capture or publication. Stable reads/hashes reject observed races; server publication validates the complete frozen manifest and atomically switches its reference.
 - Agent-triggered V3 model calls and Bedrock usage: 0. Human CLI usage is separate, and no cost is invented for it. Existing V2 ledger/unknown reservation is untouched.
-- V3 commits remain local; no v3 PR/remote CI or main merge is claimed.
+- The PR workflow runs V3 service/data checks and renderer/reader build alongside existing regression. Native macOS UI/CLI acceptance is separate local evidence; no main merge is part of this work.
 
 
 ## Additional acceptance and machine-readable records
