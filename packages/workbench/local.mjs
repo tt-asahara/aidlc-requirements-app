@@ -50,6 +50,18 @@ export async function inspectCli(file) {
     login: "本人がCLIで確認・操作してください",
   };
 }
+function workspaceIdentity(project, version, epoch) {
+  // Server responses are data, even after HTTPS authentication. IDs must never
+  // become path fragments that escape this client's private cache/edit roots.
+  for (const value of [project?.id, version?.id])
+    if (
+      typeof value !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)
+    )
+      throw new Error("共有案件/版のIDが不正です");
+  if (epoch !== undefined && (!Number.isSafeInteger(epoch) || epoch < 1))
+    throw new Error("共有編集epochが不正です");
+}
 export class LocalWorkspace {
   constructor(base) {
     this.base = base;
@@ -58,18 +70,17 @@ export class LocalWorkspace {
     this.snapshots = new Map();
   }
   async cache(project, version) {
-    const checked = await materialize(
-      path.join(
-        this.base,
-        "shared",
-        project.id,
-        `${version.id}-${randomUUID()}`,
-      ),
-      version.files,
+    workspaceIdentity(project, version);
+    const root = path.join(
+      this.base,
+      "shared",
+      project.id,
+      `${version.id}-${randomUUID()}`,
     );
+    const checked = await materialize(root, version.files);
     this.active = {
       project: project.id,
-      root: path.join(this.base, "shared", project.id),
+      root,
       version: version.id,
       hash: checked.hash,
       editable: false,
@@ -77,6 +88,7 @@ export class LocalWorkspace {
     return checked;
   }
   async checkout(project, version) {
+    workspaceIdentity(project, version);
     if (this.active?.editable)
       this.quarantine("共有版へ切り替える前のローカル出力");
     const root = path.join(
@@ -97,6 +109,7 @@ export class LocalWorkspace {
     return this.active;
   }
   async edit(project, version, epoch) {
+    workspaceIdentity(project, version, epoch);
     if (this.active?.editable) this.quarantine("前の編集");
     const root = path.join(
       this.base,

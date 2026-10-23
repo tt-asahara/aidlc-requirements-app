@@ -295,3 +295,44 @@ test("corrupt current metadata remains readable and validated journal restores s
     await fs.rm(base, { recursive: true, force: true });
   }
 });
+
+test("remote project/version identifiers cannot escape local snapshot or edit roots", async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), "v3-identity-"));
+  try {
+    const workspace = new LocalWorkspace(base),
+      files = [];
+    for (const value of [
+      "../escape",
+      "/tmp/escape",
+      "a/b",
+      "a\\b",
+      "",
+      "..",
+      "é",
+    ]) {
+      for (const method of ["cache", "checkout", "edit"]) {
+        await assert.rejects(
+          workspace[method]({ id: value }, { id: "v1", files }, 1),
+          /ID/,
+        );
+        await assert.rejects(
+          workspace[method]({ id: "project" }, { id: value, files }, 1),
+          /ID/,
+        );
+      }
+    }
+    await assert.rejects(
+      workspace.edit({ id: "project" }, { id: "v1", files }, 0),
+      /epoch/,
+    );
+    assert.deepEqual(await fs.readdir(base), []);
+    await workspace.cache({ id: "project" }, { id: "v1", files });
+    assert.deepEqual(await fs.readdir(workspace.active.root), []);
+    assert.equal(
+      path.dirname(workspace.active.root),
+      path.join(base, "shared/project"),
+    );
+  } finally {
+    await fs.rm(base, { recursive: true, force: true });
+  }
+});
