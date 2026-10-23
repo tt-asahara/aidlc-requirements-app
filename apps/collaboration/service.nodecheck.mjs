@@ -3,12 +3,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import {record} from "../../scripts/v3/record.mjs";
 import {
   hash,
   snapshot,
   validateManifest,
 } from "../../packages/workbench/manifest.mjs";
+import { record } from "../../scripts/v3/record.mjs";
 import { startService } from "./service.mjs";
 
 test("20 authenticated clients: memberships, exclusive lease, stale epoch/CAS, atomic full manifest, history and comments", async () => {
@@ -225,7 +225,24 @@ test("20 authenticated clients: memberships, exclusive lease, stale epoch/CAS, a
       },
     });
     assert.equal(forbidden.status, 403);
-    await record("twenty-clients",{transport:"real loopback HTTP",participatingClients:clients.length,controlOwner:true,concurrentLeaseWinners:race.filter(r=>r.status===200).length,authenticated:true,projectAuthorization:true,viewerCannotEdit:true,renewal:true,staleEpochRejected:true,versionCas:true,fullManifestAtomic:true,historyRestore:true,comments:true,expiryClock:"injected",modelSent:false,passed:true});
+    await record("twenty-clients", {
+      transport: "real loopback HTTP",
+      participatingClients: clients.length,
+      controlOwner: true,
+      concurrentLeaseWinners: race.filter((r) => r.status === 200).length,
+      authenticated: true,
+      projectAuthorization: true,
+      viewerCannotEdit: true,
+      renewal: true,
+      staleEpochRejected: true,
+      versionCas: true,
+      fullManifestAtomic: true,
+      historyRestore: true,
+      comments: true,
+      expiryClock: "injected",
+      modelSent: false,
+      passed: true,
+    });
   } finally {
     await service.close();
     await fs.rm(dir, { recursive: true, force: true });

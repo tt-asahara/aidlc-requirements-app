@@ -40,6 +40,8 @@ try {
     "hook/MCP/権限/実行コード",
   );
   const plan = (await call("state")).harnessPending;
+  const report = await fs.readFile(plan.reportPath, "utf8");
+  assert(report.includes("FILE .claude/tools/aidlc.ts"));
   await assert.rejects(
     call("harness.apply", {
       securityReviewed: true,

@@ -105,7 +105,10 @@ function render(s) {
     $("empty").hidden = !!s.selected;
   }
   state = s;
-  $("buildLabel").textContent = s.runtime?.buildCommit?.slice(0, 7) ?? "";
+  $("buildLabel").textContent =
+    s.runtime?.buildCommit === "development"
+      ? "開発版"
+      : (s.runtime?.buildCommit?.slice(0, 7) ?? "");
   $("error").hidden = !s.error;
   if (s.error) $("error").textContent = s.error;
   const active = s.active;

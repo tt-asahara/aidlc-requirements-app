@@ -32,6 +32,7 @@ await fs.writeFile(
     name: "aidlc-local-workbench",
     productName: "AI-DLC Workbench",
     version: "0.3.0",
+    buildCommit: revision,
     main: "apps/desktop/bootstrap.cjs",
     private: true,
   }),
