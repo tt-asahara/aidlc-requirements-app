@@ -9,6 +9,7 @@ import {
   materialize,
   readSafe,
   snapshot,
+  stableIndexSnapshot,
   stableSnapshot,
 } from "./manifest.mjs";
 
@@ -165,6 +166,10 @@ export class LocalWorkspace {
   async stable() {
     if (!this.active) throw new Error("案件を開いてください");
     return stableSnapshot(this.active.root);
+  }
+  async index() {
+    if (!this.active) throw new Error("案件を開いてください");
+    return stableIndexSnapshot(this.active.root);
   }
   async file(name) {
     if (!this.active) throw new Error("案件を開いてください");

@@ -45,6 +45,26 @@ export function safeName(name) {
     throw new Error("共有/閲覧対象外のパスです");
   return name;
 }
+export const LOCAL_INDEX_LIMIT = 64 * 1024 * 1024;
+function violation(code, message, details = {}) {
+  return Object.assign(new Error(message), { code, ...details });
+}
+function validatePathLayout(names) {
+  const seen = new Set();
+  for (const name of names) {
+    const folded = name.toLowerCase();
+    if (seen.has(folded)) throw new Error("重複パスです");
+    seen.add(folded);
+  }
+  for (const name of seen) {
+    const parts = name.split("/");
+    for (let i = 1; i < parts.length; i++)
+      if (seen.has(parts.slice(0, i).join("/")))
+        throw new Error("ファイルと親ディレクトリのパスが衝突しています");
+  }
+}
+const manifestHash = (files) =>
+  hash(JSON.stringify(files.map((f) => ({ path: f.path, sha256: f.sha256 }))));
 export function validateManifest(input) {
   if (!Array.isArray(input) || input.length > 2000)
     throw new Error("ファイル数の上限を超えています");
@@ -64,13 +84,34 @@ export function validateManifest(input) {
         throw new Error("ファイル形式が不正です");
       const bytes = Buffer.from(f.data, "base64");
       total += bytes.length;
-      if (
-        bytes.toString("base64") !== f.data ||
-        bytes.length > 2 * 1024 * 1024 ||
-        total > 20 * 1024 * 1024 ||
-        hash(bytes) !== f.sha256
-      )
-        throw new Error("バイト列/hash/容量が不正です");
+      if (bytes.toString("base64") !== f.data)
+        throw violation(
+          "MANIFEST_ENCODING",
+          `ファイルの符号化が一致しません: ${name}`,
+          { filePath: name },
+        );
+      if (bytes.length > 2 * 1024 * 1024)
+        throw violation(
+          "MANIFEST_FILE_LIMIT",
+          `共有する1ファイルの容量上限2MiBを超えています: ${name}`,
+          {
+            filePath: name,
+            actualBytes: bytes.length,
+            limitBytes: 2 * 1024 * 1024,
+          },
+        );
+      if (total > 20 * 1024 * 1024)
+        throw violation(
+          "MANIFEST_TOTAL_LIMIT",
+          "共有対象の合計容量が上限20MiBを超えています。ローカルの原本は削除していません",
+          { actualBytes: total, limitBytes: 20 * 1024 * 1024 },
+        );
+      if (hash(bytes) !== f.sha256)
+        throw violation(
+          "MANIFEST_HASH_MISMATCH",
+          `ファイルの内容と照合値が一致しません: ${name}`,
+          { filePath: name },
+        );
       if (
         ![".png", ".jpg", ".jpeg", ".webp"].includes(
           path.extname(name).toLowerCase(),
@@ -83,20 +124,10 @@ export function validateManifest(input) {
       return { path: name, sha256: f.sha256, data: f.data };
     })
     .sort((a, b) => a.path.localeCompare(b.path, "en"));
-  // A file cannot also be a directory, including on case-insensitive volumes.
-  for (const name of seen) {
-    const parts = name.split("/");
-    for (let i = 1; i < parts.length; i++)
-      if (seen.has(parts.slice(0, i).join("/")))
-        throw new Error("ファイルと親ディレクトリのパスが衝突しています");
-  }
-  return {
-    files,
-    hash: hash(
-      JSON.stringify(files.map((f) => ({ path: f.path, sha256: f.sha256 }))),
-    ),
-  };
+  validatePathLayout(files.map((f) => f.path));
+  return { files, hash: manifestHash(files) };
 }
+
 export async function readSafe(root, name) {
   safeName(name);
   const base = await fs.realpath(root);
@@ -135,8 +166,7 @@ export async function readSafe(root, name) {
     await handle.close();
   }
 }
-export async function snapshot(root) {
-  const result = [];
+async function visitProjectFiles(root, visit) {
   let count = 0;
   async function walk(dir, relative = "") {
     for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
@@ -167,16 +197,44 @@ export async function snapshot(root) {
         }
         if (++count > 2000) throw new Error("ファイル数上限です");
         const bytes = await readSafe(root, name);
-        result.push({
-          path: name,
-          sha256: hash(bytes),
-          data: bytes.toString("base64"),
-        });
+        await visit(name, bytes);
       }
     }
   }
   await walk(root);
+}
+export async function snapshot(root) {
+  const result = [];
+  await visitProjectFiles(root, (name, bytes) => {
+    result.push({
+      path: name,
+      sha256: hash(bytes),
+      data: bytes.toString("base64"),
+    });
+  });
   return validateManifest(result);
+}
+// A read-only index is deliberately not a publishable manifest: it retains no
+// file payloads. Keep per-file/path/secret checks, with a separate bounded read
+// budget. Upload/materialization still validate the complete 20MiB manifest.
+export async function indexSnapshot(root) {
+  const files = [];
+  let totalBytes = 0;
+  await visitProjectFiles(root, (name, bytes) => {
+    totalBytes += bytes.length;
+    if (totalBytes > LOCAL_INDEX_LIMIT)
+      throw violation(
+        "LOCAL_INDEX_LIMIT",
+        "ローカル一覧の総読取上限64MiBを超えています。対象フォルダを確認してください",
+        { actualBytes: totalBytes, limitBytes: LOCAL_INDEX_LIMIT },
+      );
+    const sha256 = hash(bytes);
+    validateManifest([{ path: name, sha256, data: bytes.toString("base64") }]);
+    files.push({ path: name, sha256, bytes: bytes.length });
+  });
+  files.sort((a, b) => a.path.localeCompare(b.path, "en"));
+  validatePathLayout(files.map((f) => f.path));
+  return { files, hash: manifestHash(files), totalBytes };
 }
 export async function materialize(root, manifest) {
   const checked = validateManifest(manifest.files ?? manifest);
@@ -193,13 +251,16 @@ export async function materialize(root, manifest) {
   }
   return checked;
 }
-export async function stableSnapshot(root) {
-  let previous = await snapshot(root);
+async function stableRead(root, read) {
+  let previous = await read(root);
   for (let i = 0; i < 3; i++) {
     await new Promise((r) => setTimeout(r, 120));
-    const next = await snapshot(root);
+    const next = await read(root);
     if (previous.hash === next.hash) return next;
     previous = next;
   }
   throw new Error("書込中です。安定してから再読取します");
 }
+
+export const stableSnapshot = (root) => stableRead(root, snapshot);
+export const stableIndexSnapshot = (root) => stableRead(root, indexSnapshot);

@@ -12,7 +12,8 @@ let state = {},
   filesKey = "",
   renderedRoot = null,
   selectionRequest = 0,
-  securityReviewKey = "";
+  securityReviewKey = "",
+  creatingLocal = false;
 const terminal = new Terminal({
   fontFamily: "Menlo,monospace",
   fontSize: 13,
@@ -135,6 +136,7 @@ function render(s) {
     renderedRoot = s.active?.root;
     $("annotation").hidden = true;
     $("previewArea").hidden = false;
+    $("fileTitle").textContent = "モックを見ながら、具体化する";
     $("document").textContent = "";
     $("document").hidden = true;
     $("empty").hidden = !!s.selected;
@@ -149,6 +151,21 @@ function render(s) {
   const active = s.active;
   $("projectName").textContent =
     s.shared?.name ?? active?.name ?? (active ? "ローカル案件" : "案件未選択");
+  $("projectLocation").textContent = active ? `保存先: ${active.root}` : "";
+  const created = s.localCreation?.root === active?.root && !!active;
+  $("localCreationNotice").hidden = !created;
+  $("localCreationNotice").textContent = created
+    ? `新しい案件を作成しました。${active.name}。左の「Claude Codeを起動」から作業できます。前の案件は保存先に残っています。`
+    : "";
+  $("newLocal").disabled =
+    creatingLocal || s.terminalRunning || (s.shared && active?.editable);
+  $("newLocal").textContent = creatingLocal ? "作成中…" : "ローカル案件を作成";
+  $("createAndStart").disabled = creatingLocal;
+  $("localCreateHint").textContent = s.terminalRunning
+    ? "案件の作成・切替は、現在のCLIを本人が終了してから行えます。"
+    : s.shared && active?.editable
+      ? "新しい案件の作成は、現在の共有編集を終了してから行えます。"
+      : "新しい案件は別フォルダへ保存します。既存の案件は上書きしません。";
   $("version").textContent = s.shared
     ? `共有版 ${s.shared.head.slice(0, 8)}・epoch ${s.shared.epoch}`
     : "ローカル保存";
@@ -421,7 +438,24 @@ async function select(name) {
   $("document").textContent = r.text ?? "";
   layout();
 }
-button("newLocal", () => call("local.create"));
+async function createLocal() {
+  if (creatingLocal) return false;
+  creatingLocal = true;
+  render(state);
+  let failure;
+  try {
+    await call("local.create");
+    return true;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    creatingLocal = false;
+    render(state);
+    if (failure) showError(failure);
+  }
+}
+button("newLocal", createLocal);
 button("openLocal", () => call("local.open"));
 button("refresh", () => call("files.refresh"));
 async function startCli() {
@@ -439,7 +473,7 @@ async function startCli() {
 }
 button("startCli", startCli);
 button("createAndStart", async () => {
-  await call("local.create");
+  if (!(await createLocal())) return;
   $("startDialog").close();
   await startCli();
 });

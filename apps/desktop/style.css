@@ -421,3 +421,21 @@ body [hidden],
   font-size: 11px;
   color: #50684f;
 }
+
+.local-context {
+  padding: 4px 14px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+#projectLocation {
+  color: #526257;
+  user-select: text;
+}
+#localCreationNotice {
+  margin: 4px 0;
+  color: #1d5e39;
+  font-weight: 600;
+}
+#localCreateHint {
+  color: #526257;
+}

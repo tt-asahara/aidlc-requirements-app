@@ -17,7 +17,9 @@ try {
   await page
     .getByRole("button", { name: "ローカル案件を作成", exact: true })
     .click();
-  await page.getByRole("button", { name: "版を確認", exact: true }).click();
+  await page
+    .getByRole("button", { name: "バージョンを表示", exact: true })
+    .click();
   await page.waitForTimeout(2500);
   console.log("TERMINAL", await page.locator("#terminal").innerText());
   assert((await page.locator("#terminal").innerText()).includes("Claude Code"));

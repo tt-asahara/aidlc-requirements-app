@@ -33,7 +33,7 @@ import {
   hash,
   readSafe,
   safeName,
-  stableSnapshot,
+  stableIndexSnapshot,
 } from "../../packages/workbench/manifest.mjs";
 import {
   authorizeNative,
@@ -116,7 +116,9 @@ let workspace = new LocalWorkspace(config.store),
   harnessPending = null,
   lastBackup = null,
   error = null,
-  cli = null;
+  cli = null,
+  localCreation = null,
+  fileReadError = null;
 const shots = new Map();
 let closing = false;
 try {
@@ -139,6 +141,7 @@ const sendTerminal = (m) => {
 function state() {
   return {
     config,
+    localCreation,
     runtime: {
       electron: process.versions.electron,
       node: process.versions.node,
@@ -260,7 +263,11 @@ async function refresh() {
   if (!workspace.active) return;
   const root = workspace.active.root;
   try {
-    const result = await stableSnapshot(root);
+    const result = await stableIndexSnapshot(root);
+    if (workspace.active?.root !== root) return;
+    if (fileReadError?.root === root && error === fileReadError.message)
+      error = null;
+    fileReadError = null;
     let harness;
     try {
       harness = await harnessStatus(root);
@@ -317,9 +324,20 @@ async function refresh() {
       push();
     } else if (harness.metadataCorrupt || harness.warnings?.length) push();
   } catch (e) {
+    if (workspace.active?.root !== root) return;
+    fileReadError = { root, message: e.message };
     error = e.message;
     push();
   }
+}
+function resetLocalProjection() {
+  stable = { files: [], hash: "" };
+  selected = null;
+  documentText = "";
+  viewIntent = null;
+  workflow = { progress: null, mockups: null, message: null };
+  fileReadError = null;
+  hidePreview();
 }
 function observe() {
   void preserveRecovery().catch(() => {});
@@ -529,6 +547,7 @@ async function openShared(id) {
   const p = await request(`/projects/${id}`);
   const v = await request(`/projects/${id}/versions/${p.head}`);
   await workspace.checkout(p, v);
+  localCreation = null;
   shared = p;
   selected = null;
   hidePreview();
@@ -834,7 +853,15 @@ async function initialize() {
         throw new Error("先に現在の編集を終了してください");
       if (terminalRunning) throw new Error("先にCLIを終了してください");
       shared = null;
-      await workspace.local("ローカル案件");
+      await workspace.local(
+        `ローカル案件 ${new Date().toLocaleString("ja-JP", { hour12: false })}`,
+      );
+      resetLocalProjection();
+      localCreation = {
+        project: workspace.active.project,
+        name: workspace.active.name,
+        root: workspace.active.root,
+      };
       config.lastLocal = { ...workspace.active };
       await save();
       observe();
@@ -862,6 +889,8 @@ async function initialize() {
           editable: true,
           lease: true,
         };
+        resetLocalProjection();
+        localCreation = null;
         config.lastLocal = { ...workspace.active };
         await save();
         observe();
@@ -916,7 +945,7 @@ async function initialize() {
         previewSceneHash !== sceneHash(selected.path)
       )
         throw new Error("モックの安定した読込を待ってください");
-      const manifestBefore = await workspace.stable();
+      const manifestBefore = await workspace.index();
       const frozen = {
         ...selected,
         manifestHash: manifestBefore.hash,
@@ -944,7 +973,7 @@ async function initialize() {
       if (png.length > 4 * 1024 * 1024) throw new Error("画像容量上限です");
       if (
         hash(await workspace.file(frozen.path)) !== frozen.sha256 ||
-        (await workspace.stable()).hash !== frozen.manifestHash
+        (await workspace.index()).hash !== frozen.manifestHash
       )
         throw new Error("撮影中に変更されました");
       const id = randomUUID();
@@ -968,7 +997,7 @@ async function initialize() {
         shot.version !== workspace.active.version ||
         shot.epoch !== workspace.active.epoch ||
         hash(await workspace.file(shot.path)) !== shot.sha256 ||
-        (await workspace.stable()).hash !== shot.manifestHash
+        (await workspace.index()).hash !== shot.manifestHash
       )
         throw new Error("古い版の指示です。下書きを保持し再撮影してください");
       if (shared) editable();
@@ -1039,7 +1068,8 @@ async function initialize() {
     },
     "terminal.resize": async (b) => {
       terminalSize = checkedTerminalSize(b);
-      if (ptyWorker) ptyWorker.postMessage({ type: "resize", ...terminalSize });
+      if (ptyWorker && terminalRunning && !terminalStopping)
+        ptyWorker.postMessage({ type: "resize", ...terminalSize });
       return {};
     },
     "share.host": async () => {
@@ -1431,7 +1461,15 @@ async function initialize() {
     )
       throw new Error("IPC request denied");
     try {
-      error = null;
+      if (
+        ![
+          "state",
+          "preview.bounds",
+          "terminal.input",
+          "terminal.resize",
+        ].includes(action)
+      )
+        error = null;
       const independent = [
         "state",
         "terminal.input",

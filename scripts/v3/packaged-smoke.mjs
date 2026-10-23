@@ -51,7 +51,9 @@ try {
   await app.page
     .getByRole("button", { name: "aidlc/mock.html", exact: true })
     .click();
-  await app.page.locator("#checkCli").click();
+  await app.page
+    .getByRole("button", { name: "バージョンを表示", exact: true })
+    .click();
   await expect(app.page.locator("#terminal")).toContainText("Claude Code");
   await expect
     .poll(async () => (await call("state")).terminalRunning)
