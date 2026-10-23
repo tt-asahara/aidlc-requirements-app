@@ -183,3 +183,28 @@ test("interrupted harness apply restores only known before/after bytes, and unsa
     await fs.rm(base, { recursive: true, force: true });
   }
 });
+
+test("local project path stays canonical across restarts and preserves workflow pointers", async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), "v3-canonical-"));
+  try {
+    const w = new LocalWorkspace(base);
+    await w.local("synthetic");
+    assert.equal(w.active.root, await fs.realpath(w.active.root));
+    await fs.writeFile(
+      path.join(w.active.root, "aidlc/active-space"),
+      "default",
+    );
+    await fs.mkdir(path.join(w.active.root, "aidlc/spaces/default/intents"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(w.active.root, "aidlc/spaces/default/intents/active-intent"),
+      "round-1",
+    );
+    const files = (await w.stable()).files;
+    assert(files.some((f) => f.path === "aidlc/active-space"));
+    assert(files.some((f) => f.path.endsWith("/active-intent")));
+  } finally {
+    await fs.rm(base, { recursive: true, force: true });
+  }
+});

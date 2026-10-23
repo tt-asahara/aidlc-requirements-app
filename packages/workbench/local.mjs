@@ -116,8 +116,9 @@ export class LocalWorkspace {
   }
   async local(name) {
     if (this.active?.editable) this.quarantine("前のローカル案件の保存");
-    const root = path.join(this.base, "local", randomUUID());
-    await fs.mkdir(root, { recursive: true, mode: 0o700 });
+    const directory = path.join(this.base, "local", randomUUID());
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+    const root = await fs.realpath(directory);
     await fs.mkdir(path.join(root, "aidlc"), { recursive: true });
     this.active = {
       project: randomUUID(),

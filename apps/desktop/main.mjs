@@ -186,6 +186,15 @@ function push() {
   if (window && !window.isDestroyed())
     window.webContents.send("v3:state", state());
 }
+function privateProjectRoot(root) {
+  const home = path.relative(root, os.homedir());
+  return (
+    (!path.isAbsolute(home) &&
+      home !== ".." &&
+      !home.startsWith(`..${path.sep}`)) ||
+    /\/(\.claude|\.aws|\.ssh)(\/|$)/i.test(root)
+  );
+}
 function editable() {
   if (!workspace.active?.editable || !workspace.active.lease)
     throw new Error(
@@ -743,11 +752,7 @@ async function initialize() {
       });
       if (!r.canceled) {
         const root = await fs.realpath(r.filePaths[0]);
-        if (
-          root === os.homedir() ||
-          root === "/" ||
-          /\/(\.claude|\.aws|\.ssh)(\/|$)/.test(root)
-        )
+        if (privateProjectRoot(root))
           throw new Error("個人設定/ホーム全体は開けません");
         shared = null;
         if (workspace.active?.editable)
@@ -1206,12 +1211,7 @@ async function initialize() {
     try {
       const saved = config.lastLocal,
         root = await fs.realpath(saved.root);
-      if (
-        root === os.homedir() ||
-        root === "/" ||
-        /\/(\.claude|\.aws|\.ssh)(\/|$)/.test(root) ||
-        !(await fs.stat(root)).isDirectory()
-      )
+      if (privateProjectRoot(root) || !(await fs.stat(root)).isDirectory())
         throw new Error("unsafe project");
       workspace.active = { ...saved, root, editable: true, lease: true };
       observe();

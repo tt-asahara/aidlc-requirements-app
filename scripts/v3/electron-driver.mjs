@@ -38,6 +38,9 @@ export async function launchDesktop(directory, options = {}) {
       clearTimeout(timer);
       reject(error);
     });
+    process.stdout.on("data", (chunk) => {
+      logs = (logs + String(chunk)).slice(-16000);
+    });
     process.stderr.on("data", (chunk) => {
       logs = (logs + String(chunk)).slice(-16000);
       const match = logs.match(/DevTools listening on (ws:\/\/[^\s]+)/);
@@ -52,14 +55,31 @@ export async function launchDesktop(directory, options = {}) {
     });
   });
   const browser = await chromium.connectOverCDP(endpoint);
-  const context = browser.contexts()[0];
-  let page;
+  let context, page;
   for (let i = 0; i < 100; i++) {
-    page = context.pages().find((p) => p.url().includes("/dist/index.html"));
+    for (const candidate of browser.contexts()) {
+      page = candidate
+        .pages()
+        .find((p) => p.url().includes("/dist/index.html"));
+      if (page) {
+        context = candidate;
+        break;
+      }
+    }
     if (page) break;
     await new Promise((r) => setTimeout(r, 100));
   }
-  if (!page) throw new Error(`Main window missing: ${logs}`);
+  if (!page) {
+    const targets = await browser
+      .newBrowserCDPSession()
+      .then((c) => c.send("Target.getTargets"))
+      .catch(() => ({}));
+    process.kill("SIGTERM");
+    await browser.close().catch(() => {});
+    throw new Error(
+      `Main window missing: ${logs} targets=${JSON.stringify(targets)}`,
+    );
+  }
   await page.waitForFunction(() => !!window.workbench);
   return {
     page,
