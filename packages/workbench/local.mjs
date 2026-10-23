@@ -204,7 +204,7 @@ export async function fetchHarness(cache, revision) {
     prepared: false,
   };
 }
-function bundleName(name) {
+export function bundleName(name) {
   if (
     !name.startsWith(".claude/") ||
     name
@@ -457,6 +457,7 @@ export async function harnessPlan(root, bundle, receipt) {
   }
   return {
     bundle: bundle.id,
+    source: bundle.origin,
     changes,
     managed,
     previous: receipt,
@@ -504,7 +505,11 @@ export async function applyHarness(
   }
   await fs.writeFile(
     path.join(root, ".v3-harness/current.json"),
-    JSON.stringify({ bundle: plan.bundle, files: plan.managed }),
+    JSON.stringify({
+      bundle: plan.bundle,
+      source: plan.source,
+      files: plan.managed,
+    }),
     { mode: 0o600 },
   );
   receipt.state = "committed";

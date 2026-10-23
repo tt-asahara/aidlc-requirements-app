@@ -102,7 +102,10 @@ await exec("/usr/bin/codesign", [
   bundle,
 ]);
 await exec("/usr/bin/codesign", ["--verify", "--deep", "--strict", bundle]);
+const sourceDirty =
+  (await exec("git", ["status", "--porcelain"])).stdout.trim().length > 0;
 const receipt = {
+  sourceDirty,
   at: new Date().toISOString(),
   bundle,
   revision,

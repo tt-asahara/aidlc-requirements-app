@@ -31,8 +31,11 @@ const actions = new Set([
   "share.comment",
   "share.revoke",
   "harness.fetch",
+  "harness.releases",
+  "harness.download",
   "harness.import",
   "harness.plan",
+  "harness.openDiff",
   "harness.apply",
   "harness.rollback",
 ]);

@@ -13,6 +13,7 @@ import {
   ipcMain,
   protocol,
   session,
+  shell,
   utilityProcess,
   WebContentsView,
 } from "electron";
@@ -34,9 +35,17 @@ import {
   stableSnapshot,
 } from "../../packages/workbench/manifest.mjs";
 
+import {
+  downloadRelease,
+  listReleases,
+} from "../../packages/workbench/releases.mjs";
 import { readMockups, readProgress } from "./dist/local-reader.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const buildCommit = await fs
+  .readFile(path.resolve(here, "../../package.json"), "utf8")
+  .then((s) => JSON.parse(s).buildCommit ?? "development")
+  .catch(() => "development");
 const bunDirectory = path.resolve(here, "../../vendor/bin");
 const bundledBun = await fs
   .stat(path.join(bunDirectory, "bun"))
@@ -109,6 +118,7 @@ let workspace = new LocalWorkspace(config.store),
   pollBusy = false,
   harnessBundle = null,
   appliedHarness = null,
+  harnessReleases = [],
   harnessPending = null,
   lastBackup = null,
   error = null,
@@ -142,6 +152,7 @@ function state() {
       platform: process.platform,
       arch: process.arch,
       bundledBun,
+      buildCommit,
     },
     cli,
     active: workspace.active ? { ...workspace.active } : null,
@@ -156,6 +167,7 @@ function state() {
     terminalSize,
     terminalShutdown,
     terminalRecovery:
+      terminalRunning &&
       !!ptyRoot &&
       (workspace.active?.root !== ptyRoot || !!workspace.active?.quarantined),
     sharing: sharing
@@ -170,11 +182,18 @@ function state() {
     recoveries: workspace.recoveries,
     error,
     appliedHarness,
+    harnessReleases,
     harnessBundle: harnessBundle
       ? { id: harnessBundle.id, origin: harnessBundle.origin }
       : null,
     harnessPending: harnessPending
       ? {
+          id: harnessPending.id,
+          reportPath: harnessPending.reportPath,
+          truncated: harnessPending.changes.some(
+            (f) =>
+              (f.before?.length ?? 0) > 40000 || (f.after?.length ?? 0) > 40000,
+          ),
           bundle: harnessPending.bundle,
           needsSecurityReview: harnessPending.needsSecurityReview,
           changes: harnessPending.changes.map((f) => ({
@@ -596,6 +615,8 @@ async function initialize() {
       webviewTag: false,
     },
   });
+  window.setTitle(`AI-DLC Workbench · v3 ${buildCommit.slice(0, 7)}`);
+  window.on("page-title-updated", (e) => e.preventDefault());
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (e) => e.preventDefault());
   window.webContents.session.setPermissionRequestHandler(
@@ -1093,6 +1114,26 @@ async function initialize() {
       await pollInside();
       return state();
     },
+    "harness.releases": async () => {
+      harnessReleases = await listReleases();
+      return state();
+    },
+    "harness.download": async (b) => {
+      const selected = harnessReleases.find((r) => r.tag === b.tag);
+      if (!selected)
+        throw new Error("先に公開配布版を確認して選択してください");
+      if (selected.prerelease && b.allowPreview !== true)
+        throw new Error("プレビュー版の明示確認が必要です");
+      harnessBundle = await downloadRelease(
+        selected,
+        path.join(data, "harness-bundles"),
+      );
+      config.prepared = harnessBundle.id;
+      config.downloadedRelease = harnessBundle.origin;
+      harnessPending = null;
+      await save();
+      return state();
+    },
     "harness.fetch": async (b) => {
       config.downloaded = await fetchHarness(
         path.join(data, "harness-source"),
@@ -1131,12 +1172,35 @@ async function initialize() {
         root: workspace.active.root,
         epoch: workspace.active.epoch,
       };
+      harnessPending.id = hash(JSON.stringify(harnessPending));
+      const reportFolder = path.join(data, "harness-diffs");
+      await fs.mkdir(reportFolder, { recursive: true, mode: 0o700 });
+      harnessPending.reportPath = path.join(
+        reportFolder,
+        `${harnessPending.id}.txt`,
+      );
+      const report = harnessPending.changes
+        .map(
+          (f) =>
+            `FILE ${f.path}\nBEFORE SHA256 ${f.beforeHash ?? "none"}\nAFTER SHA256 ${f.afterHash ?? "deleted"}\n--- BEFORE\n${f.before ? Buffer.from(f.before, "base64").toString("utf8") : "[absent]"}\n+++ AFTER\n${f.after ? Buffer.from(f.after, "base64").toString("utf8") : "[deleted]"}`,
+        )
+        .join("\n\n");
+      await fs.writeFile(harnessPending.reportPath, report, { mode: 0o600 });
       return state();
+    },
+    "harness.openDiff": async (b) => {
+      if (!harnessPending || b.planId !== harnessPending.id)
+        throw new Error("現在の差分を表示してください");
+      const message = await shell.openPath(harnessPending.reportPath);
+      if (message) throw new Error(message);
+      return {};
     },
     "harness.apply": async (b) => {
       editable();
       if (
         !harnessPending ||
+        b.planId !== harnessPending.id ||
+        b.bundle !== harnessPending.bundle ||
         harnessPending.root !== workspace.active.root ||
         harnessPending.epoch !== workspace.active.epoch
       )

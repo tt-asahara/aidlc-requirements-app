@@ -5,7 +5,7 @@ Validation uses isolated synthetic projects and private application data. The us
 | Scope | Result | Evidence / practical limit |
 |---|---|---|
 | Existing V2 | 195 tests, 875 assertions, 22 browser E2E; lint, typecheck and build pass | Real model is not part of regression. Web bundle retains the existing size advisory. |
-| V3 core | 7 Node tests pass | Actual HTTP service with 20 authenticated clients, project memberships, one editor, renewal/expiry/epoch, CAS, full-manifest validation, comments and immutable restore. Local file/harness isolation and interrupted recovery. |
+| V3 core | 10 Node tests pass | Actual HTTP service with 20 authenticated clients, project memberships, one editor, renewal/expiry/epoch, CAS, full-manifest validation, comments and immutable restore. Local file/harness isolation and interrupted recovery. |
 | Official Claude TUI | Pass | User-installed 2.1.309. Actual interactive folder-confirmation screen at 53 and 89 columns, no input/permission acceptance/model prompts. xterm/PTY initial geometry agrees; own PID exits after stop. |
 | Terminal rendering | Pass | Explicit synthetic PTY fixture covers Japanese/full-width characters, split UTF-8 bytes, ANSI cursor/color, alternate screen, SIGWINCH, independent right resize and saved width after restart. This fixture is not model output. |
 | Native preview / annotation | Pass | Actual dynamic HTML interaction, native PNG capture, image hash/file reference and full editable draft, clipboard text plus PNG confirmed after awaited Electron45 write. Source changes reject stale copy without losing text. |
@@ -43,8 +43,17 @@ The explicit optional `official-harness-check.mjs <local prepared distribution>`
 
 - Production OIDC/TLS, membership identity and hosted adapter endpoint are unconfigured. Local invitation auth is a verification adapter, not a 20-person hosted rollout.
 - Developer ID signing, notarization, Windows/Linux distribution and public release review are not done. Package is a local macOS arm64 build; third-party notices are included.
-- Prepared `.claude` distribution selection is required; a fetched source commit is not automatically built or executed. Root `.mcp.json` and external/cloud MCP settings are deliberately outside that import. Git is needed for source fetching.
+- Published release list/download/digest+tag-commit pin/diff/security confirmation/apply/rollback is implemented and verified through actual Electron UI. Only a preview release is currently published and it requires explicit selection. A fetched develop commit is not automatically built or executed. Root `.mcp.json` and external/cloud MCP settings are deliberately outside that import. Git is needed for source fetching.
 - The app neither reads Claude login tokens nor verifies subscription/billing identity. The user operates official CLI auth. No automated Team model/image-input or long AI-DLC workflow verification was performed; prior V2 model runs are not V3 evidence.
 - Existing user-controlled/external editors cannot be made fully atomic with capture or publication. Stable reads/hashes reject observed races; server publication validates the complete frozen manifest and atomically switches its reference.
 - Agent-triggered V3 model calls and Bedrock usage: 0. Human CLI usage is separate, and no cost is invented for it. Existing V2 ledger/unknown reservation is untouched.
 - V3 commits remain local; no v3 PR/remote CI or main merge is claimed.
+
+
+## Additional acceptance and machine-readable records
+
+- Actual packaged `Claude Codeを起動` produces the interactive folder-confirmation TUI, not just version text. No answer, login, permission acceptance or model prompt was inserted.
+- Starting without a project opens an explicit create/select dialog. The agent does not silently choose a directory.
+- Settings release flow verified with official published preview archive SHA256 `ce7f56ff3d6adc8f8b80ff834c3bf95faef188b8e78bc7be38e78e49aa0b23e2`, resolved tag commit `6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a`, prepared content hash `e3285796ac083a86354c51aaf1627a231d28e51fa077bc4b468bbb4c634eba98`. Download alone changes no project; stale review-plan ID rejects apply; explicit security confirmation, apply and rollback pass. Fetched code execution and new credentials: 0.
+- Test records are emitted under `../evidence/v3/`: `twenty-clients-current.json`, `two-clients-current.json`, `desktop-tui-current.json`, `release-ui-current.json`, `packaged-acceptance.json`, plus timestamped historical JSON. These contain synthetic results and no invites/session tokens. Repeatable record creation is in `scripts/v3/record.mjs`.
+- Public GitHub API returned a verified rate-limit 403; the client uses the same public repository's feed/checksum plus anonymous Git ref resolution, without tokens or account changes. SHA/pin verification remains mandatory.

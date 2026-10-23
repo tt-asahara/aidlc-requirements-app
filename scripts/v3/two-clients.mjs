@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { expect } from "@playwright/test";
 import { launchDesktop } from "./electron-driver.mjs";
+import { record } from "./record.mjs";
 
 const a = await launchDesktop(),
   b = await launchDesktop();
@@ -98,17 +99,19 @@ try {
   await a.page.screenshot({ path: path.join(a.directory, "shared-a.png") });
   await b.page.screenshot({ path: path.join(b.directory, "shared-b.png") });
   console.log(
-    JSON.stringify({
-      twoActualElectronClients: true,
-      sameHead: true,
-      leaseConflict: true,
-      revokeQuarantine: true,
-      stalePublishRejected: true,
-      historyRestore: true,
-      comments: true,
-      modelSent: false,
-      evidence: [a.directory, b.directory],
-    }),
+    JSON.stringify(
+      await record("two-clients", {
+        twoActualElectronClients: true,
+        sameHead: true,
+        leaseConflict: true,
+        revokeQuarantine: true,
+        stalePublishRejected: true,
+        historyRestore: true,
+        comments: true,
+        modelSent: false,
+        evidence: [a.directory, b.directory],
+      }),
+    ),
   );
 } finally {
   await b.close();

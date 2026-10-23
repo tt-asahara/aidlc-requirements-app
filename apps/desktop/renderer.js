@@ -11,7 +11,8 @@ let state = {},
   shotImage = null,
   filesKey = "",
   renderedRoot = null,
-  selectionRequest = 0;
+  selectionRequest = 0,
+  securityReviewKey = "";
 const terminal = new Terminal({
   fontFamily: "Menlo,monospace",
   fontSize: 13,
@@ -104,6 +105,7 @@ function render(s) {
     $("empty").hidden = !!s.selected;
   }
   state = s;
+  $("buildLabel").textContent = s.runtime?.buildCommit?.slice(0, 7) ?? "";
   $("error").hidden = !s.error;
   if (s.error) $("error").textContent = s.error;
   const active = s.active;
@@ -136,7 +138,10 @@ function render(s) {
     s.shared.role === "viewer";
   $("publish").disabled = !s.shared || !active?.editable;
   $("end").disabled = !s.shared || !active?.editable;
-  $("startCli").disabled = !active?.editable || s.terminalRunning;
+  $("startCli").disabled = s.terminalRunning || (active && !active.editable);
+  $("terminalHint").textContent = active
+    ? "本人のTeamログインをCLI内で使用します。送信・権限承認は本人操作です。"
+    : "最初にローカル案件を作成するか、案件フォルダを開いてください。起動ボタンからも選べます。";
   $("checkCli").disabled = s.terminalRunning;
   $("stopCli").disabled = !s.terminalRunning;
   $("terminalStatus").textContent = s.terminalRunning
@@ -195,6 +200,25 @@ function render(s) {
   renderWorkflow();
   $("settingsInfo").textContent =
     `公式CLI: ${s.cli?.path ?? s.config?.cli}\n版: ${s.cli?.version ?? "未確認"}\nTeamログイン: 本人がCLI内で確認\n保存先: ${s.config?.store}\nハーネス取得元: ${s.config?.harnessSource}\n取得済みcommit: ${s.config?.downloaded?.revision ?? "未取得"}\n準備済み配布hash: ${s.harnessBundle?.id ?? s.config?.prepared ?? "未選択"}\nこの案件の適用版: ${s.appliedHarness?.bundle ?? "未適用"}\n復元: ${s.lastBackup ? (s.lastBackup.interrupted ? "中断された適用あり・復元可能" : "直前へ復元可能") : "バックアップなし"}`;
+  renderReleases();
+  const origin = s.harnessBundle?.origin;
+  if (origin?.kind === "github-release")
+    $("settingsInfo").textContent +=
+      `\n取得済み公開配布: ${origin.tag}（${origin.prerelease ? "プレビュー版" : "安定版"}）\n配布commit: ${origin.commit}\n配布SHA256: ${origin.archiveSha256}`;
+  if (s.appliedHarness?.source?.kind === "github-release")
+    $("settingsInfo").textContent +=
+      `\nこの案件の適用配布: ${s.appliedHarness.source.tag} / ${s.appliedHarness.source.commit}`;
+  const key =
+    s.harnessPending?.id ?? `backup:${s.lastBackup?.backup ?? "none"}`;
+  if (key !== securityReviewKey) {
+    securityReviewKey = key;
+    $("securityReviewed").checked = false;
+  }
+  $("applyHarness").disabled = !s.harnessPending;
+  $("openFullDiff").disabled = !s.harnessPending;
+  $("diffNotice").textContent = s.harnessPending?.truncated
+    ? "画面内は各ファイル先頭30,000文字までです。適用前に差分の全文を開いて確認できます。"
+    : "差分の全文はテキストでも確認できます。";
   $("harnessDiff").textContent = s.harnessPending
     ? s.harnessPending.changes.length
       ? s.harnessPending.changes
@@ -346,12 +370,31 @@ async function select(name) {
 button("newLocal", () => call("local.create"));
 button("openLocal", () => call("local.open"));
 button("refresh", () => call("files.refresh"));
-button("startCli", async () => {
+async function startCli() {
+  if (!state.active) {
+    $("startDialog").showModal();
+    layout();
+    return;
+  }
+
   await document.fonts.ready;
   fit.fit();
   terminal.reset();
   await call("terminal.start", { cols: terminal.cols, rows: terminal.rows });
   terminal.focus();
+}
+button("startCli", startCli);
+button("createAndStart", async () => {
+  await call("local.create");
+  $("startDialog").close();
+  await startCli();
+});
+button("openAndStart", async () => {
+  await call("local.open");
+  if (state.active) {
+    $("startDialog").close();
+    await startCli();
+  }
 });
 button("checkCli", () => {
   fit.fit();
@@ -375,6 +418,47 @@ document.querySelectorAll("[data-close]").forEach((b) => {
 });
 button("chooseCli", () => call("settings.chooseCli"));
 button("chooseStore", () => call("settings.chooseStore"));
+let releaseKey = "",
+  downloadingRelease = false;
+function renderReleases() {
+  const releases = (state.harnessReleases ?? []).filter(
+      (r) => !r.prerelease || $("allowPreview").checked,
+    ),
+    key = JSON.stringify(releases);
+  if (key !== releaseKey) {
+    releaseKey = key;
+    $("releaseVersion").replaceChildren();
+    for (const r of releases) {
+      const o = el(
+        "option",
+        `${r.tag}${r.prerelease ? "（プレビュー）" : "（安定版）"} · ${r.published?.slice(0, 10)}`,
+      );
+      o.value = r.tag;
+      $("releaseVersion").append(o);
+    }
+  }
+  $("downloadRelease").disabled = downloadingRelease || !releases.length;
+  $("releaseStatus").textContent = releases.length
+    ? "公開されている配布版です。developの最新ソースとは別です。選択した版を取得し、差分の確認後に明示適用します。取得コードは実行しません。"
+    : "公開版一覧を確認してください。安定版がない場合、プレビュー版は明示的な選択が必要です。";
+}
+$("allowPreview").onchange = renderReleases;
+button("listReleases", () => call("harness.releases"));
+button("downloadRelease", async () => {
+  downloadingRelease = true;
+  renderReleases();
+  $("releaseStatus").textContent =
+    "公開配布を取得・hash検証中です。適用は行いません。";
+  try {
+    await call("harness.download", {
+      tag: $("releaseVersion").value,
+      allowPreview: $("allowPreview").checked,
+    });
+  } finally {
+    downloadingRelease = false;
+    renderReleases();
+  }
+});
 button("fetchHarness", () =>
   call("harness.fetch", {
     revision: $("harnessRevision").value.trim() || undefined,
@@ -382,8 +466,15 @@ button("fetchHarness", () =>
 );
 button("importHarness", () => call("harness.import"));
 button("planHarness", () => call("harness.plan"));
+button("openFullDiff", () =>
+  call("harness.openDiff", { planId: state.harnessPending?.id }),
+);
 button("applyHarness", () =>
-  call("harness.apply", { securityReviewed: $("securityReviewed").checked }),
+  call("harness.apply", {
+    securityReviewed: $("securityReviewed").checked,
+    planId: state.harnessPending?.id,
+    bundle: state.harnessPending?.bundle,
+  }),
 );
 button("rollbackHarness", () =>
   call("harness.rollback", { securityReviewed: $("securityReviewed").checked }),

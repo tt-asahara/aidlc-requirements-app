@@ -24,6 +24,8 @@ try {
   await app.page.locator("#newLocal").click();
   const s = await call("state");
   assert.equal(s.runtime.electron, "45.0.0");
+  assert.equal(s.runtime.buildCommit, receipt.revision);
+  assert.equal(receipt.sourceDirty, false);
   assert.equal(s.runtime.platform, "darwin");
   assert.equal(s.runtime.bundledBun, true);
   assert.equal(

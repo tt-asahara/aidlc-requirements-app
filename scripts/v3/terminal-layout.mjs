@@ -3,12 +3,31 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { launchDesktop } from "./electron-driver.mjs";
+import { record } from "./record.mjs";
 
-const app = await launchDesktop();
+const options = process.argv.includes("--packaged")
+  ? {
+      executable: path.join(
+        JSON.parse(
+          await fs.readFile(
+            path.resolve("../evidence/v3/package-current.json"),
+          ),
+        ).bundle,
+        "Contents/MacOS/Electron",
+      ),
+      packaged: true,
+    }
+  : {};
+const app = await launchDesktop(undefined, options);
 try {
   const { page } = app;
-  await page.locator("#newLocal").click();
-  await page.locator("#startCli").click();
+  if (process.argv.includes("--onboarding")) {
+    await page.locator("#startCli").click();
+    await page.locator("#createAndStart").click();
+  } else {
+    await page.locator("#newLocal").click();
+    await page.locator("#startCli").click();
+  }
   await page.waitForFunction(() =>
     document.querySelector("#terminal").innerText.includes("Claude"),
   );
@@ -105,14 +124,14 @@ try {
   // A second synthetic project uses an explicit terminal fixture for ANSI/cursor/wide UTF-8 bytes, never model output.
   console.log(
     JSON.stringify(
-      {
+      await record(options.packaged ? "packaged-tui" : "desktop-tui", {
         at: new Date().toISOString(),
         directory: app.directory,
         first,
         wider,
         modelSent: false,
         keyboardInputSent: false,
-      },
+      }),
       null,
       2,
     ),
