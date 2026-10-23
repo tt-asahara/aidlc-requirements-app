@@ -1,0 +1,50 @@
+# V3 validation — 2026-10-23
+
+Validation uses isolated synthetic projects and private application data. The user's open workbench is retained. No automated model prompts, login-token access, AWS changes, or public deployment.
+
+| Scope | Result | Evidence / practical limit |
+|---|---|---|
+| Existing V2 | 195 tests, 875 assertions, 22 browser E2E; lint, typecheck and build pass | Real model is not part of regression. Web bundle retains the existing size advisory. |
+| V3 core | 7 Node tests pass | Actual HTTP service with 20 authenticated clients, project memberships, one editor, renewal/expiry/epoch, CAS, full-manifest validation, comments and immutable restore. Local file/harness isolation and interrupted recovery. |
+| Official Claude TUI | Pass | User-installed 2.1.309. Actual interactive folder-confirmation screen at 53 and 89 columns, no input/permission acceptance/model prompts. xterm/PTY initial geometry agrees; own PID exits after stop. |
+| Terminal rendering | Pass | Explicit synthetic PTY fixture covers Japanese/full-width characters, split UTF-8 bytes, ANSI cursor/color, alternate screen, SIGWINCH, independent right resize and saved width after restart. This fixture is not model output. |
+| Native preview / annotation | Pass | Actual dynamic HTML interaction, native PNG capture, image hash/file reference and full editable draft, clipboard text plus PNG confirmed after awaited Electron45 write. Source changes reject stale copy without losing text. |
+| Preview boundary | Pass | No Node/preload/terminal bridge, file URL or external network. Selected-directory asset allowlist, different source storage origin, another HTML cannot silently replace the captured source. Narrow region navigation works. |
+| Two Electron clients | Pass | Same immutable head, lease conflict, revoke, stale publication rejected, old local output retained outside current shared snapshot, publish/comment/history restore. |
+| Harness UI | Pass | Import/diff/explicit security check/apply/settings preservation/restart/rollback. Native folder-picker return is stubbed in the test-only entry; production IPC cannot inject a folder path. |
+| Source fetch | Pass | Fixed upstream Git source resolves `61da68f29914d50c0f962853d04b03df9fa3af9c`; exact fetch SHA verified, no fetched scripts executed. Fetch and prepared distribution/apply stay separate. |
+| Actual local prepared harness | Pass | 353 files / 172 security-sensitive changes, content manifest `be5bd8c6fb6f41464dad343f4d77077a59ca417d4e119cd8c22094d77bf7762e`. Applied only to empty synthetic project, bundled Bun runs read-only/offline `aidlc --version`: `aidlc 2.11.0 (runtime 2.11.0)`, then rollback. Empty isolated HOME, no official CLI/model. Prepared local bytes are not falsely attributed to the fetched source SHA. |
+| Workflow projection | Pass | Existing V2 reader reused; execution round/stage separated from viewed round, every AC/mapping retained, same HTML multiple states do not imply replay, legacy schema distinct, active-space/active-intent preserved in shared manifest. |
+| macOS arm64 package | Pass | Electron45 + native PTY + Bun1.3.14. Local ad-hoc signature verified, native app starts, official CLI version, real HTML/capture, same project restored after restart. No external Node/Python/Bun runtime. |
+
+## Reproducible commands
+
+```sh
+bun run lint
+bun run typecheck
+bun test
+bun run build
+bun run e2e
+bun run v3:test
+bun run v3:build
+node scripts/v3/desktop-integration.mjs
+node scripts/v3/terminal-layout.mjs
+node scripts/v3/terminal-ansi.mjs
+node scripts/v3/two-clients.mjs
+node scripts/v3/harness-ui.mjs
+node scripts/v3/workflow-ui.mjs
+node scripts/v3/package-mac.mjs
+node scripts/v3/packaged-smoke.mjs
+```
+
+The explicit optional `official-harness-check.mjs <local prepared distribution>` checks only synthetic installation/read-only version/rollback. It is not run by fetch or normal startup.
+
+## Remaining production work / non-claims
+
+- Production OIDC/TLS, membership identity and hosted adapter endpoint are unconfigured. Local invitation auth is a verification adapter, not a 20-person hosted rollout.
+- Developer ID signing, notarization, Windows/Linux distribution and public release review are not done. Package is a local macOS arm64 build; third-party notices are included.
+- Prepared `.claude` distribution selection is required; a fetched source commit is not automatically built or executed. Root `.mcp.json` and external/cloud MCP settings are deliberately outside that import. Git is needed for source fetching.
+- The app neither reads Claude login tokens nor verifies subscription/billing identity. The user operates official CLI auth. No automated Team model/image-input or long AI-DLC workflow verification was performed; prior V2 model runs are not V3 evidence.
+- Existing user-controlled/external editors cannot be made fully atomic with capture or publication. Stable reads/hashes reject observed races; server publication validates the complete frozen manifest and atomically switches its reference.
+- Agent-triggered V3 model calls and Bedrock usage: 0. Human CLI usage is separate, and no cost is invented for it. Existing V2 ledger/unknown reservation is untouched.
+- V3 commits remain local; no v3 PR/remote CI or main merge is claimed.

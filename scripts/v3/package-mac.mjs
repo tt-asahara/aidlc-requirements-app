@@ -57,6 +57,27 @@ await fs.cp(pty, path.join(app, "node_modules/node-pty"), {
       path.relative(pty, src),
     ),
 });
+const notices = path.join(app, "vendor/licenses");
+await fs.mkdir(notices, { recursive: true });
+await fs.cp("apps/desktop/licenses", notices, { recursive: true });
+for (const [name, source] of [
+  ["Electron-LICENSE", path.resolve(electron, "../../../..", "LICENSE")],
+  [
+    "Chromium-LICENSES.html",
+    path.resolve(electron, "../../../..", "LICENSES.chromium.html"),
+  ],
+  ["node-pty-LICENSE", path.join(pty, "LICENSE")],
+])
+  await fs.copyFile(source, path.join(notices, name));
+for (const name of [
+  "@xterm/xterm",
+  "@xterm/addon-fit",
+  "@xterm/addon-unicode11",
+])
+  await fs.copyFile(
+    path.join(path.dirname(require.resolve(`${name}/package.json`)), "LICENSE"),
+    path.join(notices, `${name.replaceAll("/", "-")}-LICENSE`),
+  );
 const plist = path.join(bundle, "Contents/Info.plist");
 for (const [key, value] of [
   ["CFBundleName", "AI-DLC Workbench"],
