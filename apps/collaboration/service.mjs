@@ -23,6 +23,10 @@ export async function startService({
     `PRAGMA journal_mode=WAL;PRAGMA foreign_keys=ON;CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT);CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT);CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,name TEXT,head TEXT,epoch INTEGER NOT NULL DEFAULT 0,lease_session TEXT,lease_user TEXT,expires INTEGER NOT NULL DEFAULT 0);CREATE TABLE IF NOT EXISTS members(project TEXT,user TEXT,role TEXT,PRIMARY KEY(project,user));CREATE TABLE IF NOT EXISTS versions(id TEXT PRIMARY KEY,project TEXT,previous TEXT,manifest TEXT,hash TEXT,author TEXT,message TEXT,created INTEGER);CREATE TABLE IF NOT EXISTS comments(id TEXT PRIMARY KEY,project TEXT,version TEXT,author TEXT,text TEXT,created INTEGER);`,
   );
   fs.chmodSync(path.join(directory, "collaboration.sqlite"), 0o600);
+  // Sessions are transient: a previous service lifetime cannot retain an edit lease.
+  db.exec(
+    "UPDATE projects SET epoch=epoch+1,lease_session=NULL,lease_user=NULL,expires=0 WHERE lease_session IS NOT NULL",
+  );
   const get = (sql, ...p) => db.prepare(sql).get(...p),
     all = (sql, ...p) => db.prepare(sql).all(...p),
     run = (sql, ...p) => db.prepare(sql).run(...p);
@@ -185,6 +189,12 @@ export async function startService({
       const session = bearer && sessions.get(digest(bearer));
       if (!session || session.expires <= now()) fail(401, "再接続が必要です");
       if (req.method === "DELETE" && url.pathname === "/session") {
+        tx(() =>
+          run(
+            "UPDATE projects SET epoch=epoch+1,lease_session=NULL,lease_user=NULL,expires=0 WHERE lease_session=?",
+            session.id,
+          ),
+        );
         sessions.delete(digest(bearer));
         return send(200, { signedOut: true });
       }

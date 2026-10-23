@@ -1,4 +1,5 @@
 // Test-only replacement of the native folder-picker result, never loaded by the app entry.
+require("../../apps/desktop/early.cjs");
 const { dialog } = require("electron");
 dialog.showOpenDialog = async (_window, options) => ({
   canceled: false,

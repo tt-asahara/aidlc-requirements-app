@@ -118,13 +118,15 @@ function render(s) {
     ? `共有版 ${s.shared.head.slice(0, 8)}・epoch ${s.shared.epoch}`
     : "ローカル保存";
   $("saved").textContent = active
-    ? s.shared
-      ? active.editable
-        ? s.hash === active.hash
-          ? "保存済み・共有済み"
-          : "保存済み・未反映"
-        : "共有版を閲覧中"
-      : "保存済み（共有なし）"
+    ? active.quarantined
+      ? "未反映の回復用出力（共有版ではありません）"
+      : s.shared
+        ? active.editable
+          ? s.hash === active.hash
+            ? "保存済み・共有済み"
+            : "保存済み・未反映"
+          : "共有版を閲覧中"
+        : "保存済み（共有なし）"
     : "";
   $("status").textContent =
     s.active?.quarantined || s.terminalRecovery

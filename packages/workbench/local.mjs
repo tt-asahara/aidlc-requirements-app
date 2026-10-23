@@ -77,6 +77,8 @@ export class LocalWorkspace {
     return checked;
   }
   async checkout(project, version) {
+    if (this.active?.editable)
+      this.quarantine("共有版へ切り替える前のローカル出力");
     const root = path.join(
       this.base,
       "shared",

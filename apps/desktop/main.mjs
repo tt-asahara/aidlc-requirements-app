@@ -11,7 +11,6 @@ import {
   clipboard,
   dialog,
   ipcMain,
-  protocol,
   session,
   shell,
   utilityProcess,
@@ -57,21 +56,7 @@ function executionEnvironment() {
     env.PATH = `${bunDirectory}${path.delimiter}${env.PATH ?? "/usr/bin:/bin"}`;
   return env;
 }
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: "aidlc-preview",
-    privileges: { standard: true, secure: true, supportFetchAPI: true },
-  },
-]);
-app.enableSandbox();
-app.setName("AI-DLC Local Team Workbench");
-if (process.env.V3_DATA_DIR)
-  app.setPath("userData", path.resolve(process.env.V3_DATA_DIR));
 const data = app.getPath("userData");
-if (!process.env.V3_DATA_DIR && !app.requestSingleInstanceLock()) {
-  app.quit();
-  process.exit(0);
-}
 app.on("second-instance", () => {
   if (window && !window.isDestroyed()) {
     window.restore();
@@ -504,6 +489,8 @@ async function startTerminal(versionOnly = false, size) {
   return { started: true, versionOnly };
 }
 async function openShared(id) {
+  if (shared && workspace.active?.editable)
+    throw new Error("案件を切り替える前に編集を終了してください");
   if (terminalRunning)
     throw new Error("案件切替前にターミナルを終了してください");
   const p = await request(`/projects/${id}`);
@@ -769,6 +756,8 @@ async function initialize() {
       return state();
     },
     "local.create": async () => {
+      if (shared && workspace.active?.editable)
+        throw new Error("先に現在の編集を終了してください");
       if (terminalRunning) throw new Error("先にCLIを終了してください");
       shared = null;
       await workspace.local("ローカル案件");
@@ -778,6 +767,8 @@ async function initialize() {
       return state();
     },
     "local.open": async () => {
+      if (shared && workspace.active?.editable)
+        throw new Error("先に現在の編集を終了してください");
       if (terminalRunning) throw new Error("先にCLIを終了してください");
       const r = await dialog.showOpenDialog(window, {
         properties: ["openDirectory"],
@@ -1037,6 +1028,8 @@ async function initialize() {
     },
     "share.list": async () => request("/projects"),
     "share.create": async (b) => {
+      if (shared && workspace.active?.editable)
+        throw new Error("先に現在の編集を終了してください");
       const p = await request("/projects", "POST", { name: b.name });
       return openShared(p.id);
     },

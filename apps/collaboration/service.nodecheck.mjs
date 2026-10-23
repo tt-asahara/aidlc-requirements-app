@@ -282,3 +282,57 @@ test("manifest excludes credentials and rejects traversal, symlink and hash tamp
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test("service restart keeps immutable head but invalidates old sessions and leases", async () => {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), "v3-service-restart-"),
+  );
+  let service;
+  const request = async (token, route, body) => {
+    const r = await fetch(service.url + route, {
+      method: body ? "POST" : "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    return { status: r.status, body: await r.json() };
+  };
+  try {
+    service = await startService({ directory });
+    const owner = (
+      await request(null, "/session", {
+        invite: service.bootstrapInvite,
+        name: "合成管理者",
+      })
+    ).body.token;
+    const p = (await request(owner, "/projects", { name: "復帰検証" })).body;
+    const lease = (
+      await request(owner, `/projects/${p.id}/lease`, {
+        expectedVersion: p.head,
+      })
+    ).body;
+    await service.close();
+    service = await startService({ directory });
+    assert.equal((await request(owner, `/projects/${p.id}`)).status, 401);
+    const next = (
+      await request(null, "/session", {
+        invite: service.bootstrapInvite,
+        name: "合成管理者",
+      })
+    ).body.token;
+    const view = await request(next, `/projects/${p.id}`);
+    assert.equal(view.body.head, p.head);
+    assert.equal(view.body.lease, null);
+    assert(view.body.epoch > lease.epoch);
+    assert.equal(
+      (
+        await request(next, `/projects/${p.id}/lease`, {
+          expectedVersion: p.head,
+        })
+      ).status,
+      200,
+    );
+  } finally {
+    await service?.close();
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

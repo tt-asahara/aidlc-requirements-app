@@ -98,10 +98,55 @@ try {
     .toBe(restored.shared.head);
   await a.page.screenshot({ path: path.join(a.directory, "shared-a.png") });
   await b.page.screenshot({ path: path.join(b.directory, "shared-b.png") });
+  // Explicit disconnect releases only this session's lease, preserving its private output.
+  await call(b, "share.begin");
+  const disconnectRoot = (await call(b, "state")).active.root;
+  const member = (await call(b, "state")).sharing.user;
+  await call(b, "share.disconnect");
+  assert((await call(b, "state")).active.quarantined);
+  await fs.writeFile(
+    path.join(disconnectRoot, "late-output.md"),
+    "未反映の切断後出力",
+  );
+  await call(a, "share.begin");
+  await call(a, "share.end");
+  const again = await call(a, "share.invite", { role: "editor", user: member });
+  await call(b, "share.connect", {
+    url: hosted.url,
+    invite: again.invite,
+    name: "合成利用者B",
+  });
+  await call(b, "share.open", { id });
+  await call(b, "share.begin");
+  await b.page.locator("#startCli").click();
+  await expect
+    .poll(async () => (await call(b, "state")).terminalRunning)
+    .toBe(true);
+  const offlineRoot = (await call(b, "state")).active.root;
+  await a.close();
+  await expect
+    .poll(async () => (await call(b, "state")).active.quarantined, {
+      timeout: 12000,
+    })
+    .toBe(true);
+  const offline = await call(b, "state");
+  assert(
+    offline.terminalRunning && offline.terminalRecovery,
+    "lease loss does not pretend to stop local Claude",
+  );
+  await fs.writeFile(
+    path.join(offlineRoot, "late-output.md"),
+    "接続断後の隔離出力",
+  );
+  await assert.rejects(call(b, "share.publish"));
+  await call(b, "terminal.stop");
   console.log(
     JSON.stringify(
       await record("two-clients", {
         twoActualElectronClients: true,
+        explicitDisconnectReleasesOwnLease: true,
+        hostDisconnectQuarantinesOutput: true,
+        localCliContinuesUntilExplicitStop: true,
         sameHead: true,
         leaseConflict: true,
         revokeQuarantine: true,
@@ -115,5 +160,5 @@ try {
   );
 } finally {
   await b.close();
-  await a.close();
+  if (a.process.exitCode === null) await a.close();
 }
