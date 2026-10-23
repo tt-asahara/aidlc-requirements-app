@@ -14,6 +14,7 @@ export async function launchDesktop(directory, options = {}) {
     executable,
     [
       "--remote-debugging-port=0",
+      ...(options.mainInspector ? ["--inspect=127.0.0.1:0"] : []),
       ...(options.packaged
         ? []
         : [options.bootstrap ?? path.resolve("apps/desktop/bootstrap.cjs")]),
@@ -88,6 +89,42 @@ export async function launchDesktop(directory, options = {}) {
     process,
     directory,
     logs: () => logs,
+    mainEvaluate: async (expression) => {
+      if (!options.mainInspector)
+        throw new Error("Test main inspector was not requested");
+      const endpoint = logs.match(/Debugger listening on (ws:\/\/[^\s]+)/)?.[1];
+      if (!endpoint) throw new Error("Test main inspector endpoint missing");
+      const ws = new WebSocket(endpoint);
+      return await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          ws.close();
+          reject(new Error("Test main inspector timeout"));
+        }, 10000);
+        ws.onopen = () =>
+          ws.send(
+            JSON.stringify({
+              id: 1,
+              method: "Runtime.evaluate",
+              params: { expression, awaitPromise: true, returnByValue: true },
+            }),
+          );
+        ws.onerror = (e) => {
+          clearTimeout(timeout);
+          reject(e);
+        };
+        ws.onmessage = (e) => {
+          const m = JSON.parse(e.data);
+          if (m.id !== 1) return;
+          clearTimeout(timeout);
+          ws.close();
+          if (m.error || m.result?.exceptionDetails)
+            reject(
+              new Error(JSON.stringify(m.error ?? m.result.exceptionDetails)),
+            );
+          else resolve(m.result.result.value);
+        };
+      });
+    },
     close: async () => {
       process.kill("SIGTERM");
       await Promise.race([

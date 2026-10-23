@@ -41,7 +41,7 @@ The explicit optional `official-harness-check.mjs <local prepared distribution>`
 
 ## Remaining production work / non-claims
 
-- Production OIDC/TLS, membership identity and hosted adapter endpoint are unconfigured. Local invitation auth is a verification adapter, not a 20-person hosted rollout.
+- HTTPS/native-PKCE OIDC/MFA and recipient-bound project invitation are implemented in server and UI. Real organization IdP/MFA, TLS deployment and endpoint/network publication remain unconfigured/unverified. Local invitation auth is a separate verification adapter, not production MFA. See shared-server.md.
 - Developer ID signing, notarization, Windows/Linux distribution and public release review are not done. Package is a local macOS arm64 build; third-party notices are included.
 - Published release list/download/digest+tag-commit pin/diff/security confirmation/apply/rollback is implemented and verified through actual Electron UI. Only a preview release is currently published and it requires explicit selection. A fetched develop commit is not automatically built or executed. Root `.mcp.json` and external/cloud MCP settings are deliberately outside that import. Git is needed for source fetching.
 - The app neither reads Claude login tokens nor verifies subscription/billing identity. The user operates official CLI auth. No automated Team model/image-input or long AI-DLC workflow verification was performed; prior V2 model runs are not V3 evidence.

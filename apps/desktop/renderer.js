@@ -241,6 +241,15 @@ function render(s) {
   $("settingsInfo").textContent =
     `公式CLI: ${s.cli?.path ?? s.config?.cli}\n版: ${s.cli?.version ?? "未確認"}\nTeamログイン: 本人がCLI内で確認\n保存先: ${s.config?.store}\nハーネス取得元: ${s.config?.harnessSource}\n取得済みcommit: ${s.config?.downloaded?.revision ?? "未取得"}\n準備済み配布hash: ${s.harnessBundle?.id ?? s.config?.prepared ?? "未選択"}\nこの案件の適用版: ${s.appliedHarness?.bundle ?? "未適用"}\n復元: ${s.lastBackup ? (s.lastBackup.interrupted ? "中断された適用あり・復元可能" : "直前へ復元可能") : "バックアップなし"}`;
   renderReleases();
+  const remote = s.remoteConnection;
+  if (!$("shareUrl").value && s.config?.sharedServer)
+    $("shareUrl").value = s.config.sharedServer;
+  $("remoteIdentity").textContent = remote
+    ? `接続先: ${remote.url}\n本人認証: ${remote.policy.issuer}\nclient: ${remote.policy.clientId}\nMFA: amr ${remote.policy.mfa.amr.join(", ")} / acr ${remote.policy.mfa.acr.join(", ")}\n${s.loginPending ? "本人のブラウザー操作を待っています。CLIのログインは使用しません。" : "接続先と本人認証先を確認してから、ログインを開始してください。"}`
+    : "別PC共有: HTTPS接続先を確認してください。IdP設定とサーバー配置は管理者の作業です。";
+  $("connectOidc").disabled = !remote || s.loginPending || !!s.sharing;
+  $("prepareRemote").disabled = s.loginPending || !!s.sharing;
+  $("cancelLogin").disabled = !s.loginPending;
   const origin = s.harnessBundle?.origin;
   if (origin?.kind === "github-release")
     $("settingsInfo").textContent +=
@@ -524,6 +533,19 @@ button("hostShare", async () => {
   $("shareUrl").value = r.url;
   $("inviteCode").value = r.invite;
 });
+button("prepareRemote", () =>
+  call("share.prepareRemote", { url: $("shareUrl").value.trim() }),
+);
+button("connectOidc", async () => {
+  await call("share.connectOidc", {
+    invite: $("inviteCode").value.trim(),
+    expectedUrl: $("shareUrl").value.trim().replace(/\/$/, ""),
+    expectedIssuer: state.remoteConnection?.policy.issuer,
+  });
+  $("inviteCode").value = "";
+  await listProjects();
+});
+button("cancelLogin", () => call("share.cancelLogin"));
 button("connectShare", async () => {
   await call("share.connect", {
     url: $("shareUrl").value,
@@ -559,7 +581,10 @@ button("begin", () => call("share.begin"));
 button("publish", () => call("share.publish"));
 button("end", () => call("share.end"));
 button("inviteMember", async () => {
-  const r = await call("share.invite", { role: $("inviteRole").value });
+  const r = await call("share.invite", {
+    role: $("inviteRole").value,
+    email: $("inviteEmail").value.trim(),
+  });
   $("newInvite").textContent =
     `接続先: ${state.sharing.url}\n一回限りの招待: ${r.invite}\n5分で失効します。本人へ渡してください。`;
 });

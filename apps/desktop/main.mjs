@@ -34,7 +34,12 @@ import {
   safeName,
   stableSnapshot,
 } from "../../packages/workbench/manifest.mjs";
-
+import {
+  authorizeNative,
+  httpsOrigin,
+  oidcPolicy,
+  secureJson,
+} from "../../packages/workbench/oidc.mjs";
 import {
   downloadRelease,
   listReleases,
@@ -91,6 +96,8 @@ let workspace = new LocalWorkspace(config.store),
   stable = { files: [], hash: "" },
   sharing = null,
   shared = null,
+  remoteConnection = null,
+  loginController = null,
   serviceWorker,
   ptyWorker,
   ptyPid = null,
@@ -159,11 +166,14 @@ function state() {
       ? {
           url: sharing.url,
           user: sharing.user,
-          adapter: "local-invitation",
-          productionIdentityConfigured: false,
+          adapter: sharing.adapter ?? "local-invitation",
+          mfaVerified: sharing.mfaVerified === true,
+          issuer: sharing.issuer ?? null,
         }
       : null,
     shared,
+    remoteConnection,
+    loginPending: !!loginController,
     recoveries: workspace.recoveries,
     error,
     appliedHarness,
@@ -219,11 +229,21 @@ function editable() {
 }
 async function request(route, method = "GET", body) {
   if (!sharing) throw new Error("共有サービスへ接続してください");
+  if (sharing.url.startsWith("https:"))
+    return secureJson(sharing.url + route, {
+      method,
+      headers: {
+        Authorization: `Bearer ${sharing.token}`,
+        "Content-Type": "application/json",
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
   const response = await fetch(sharing.url + route, {
     method,
     headers: { Authorization: `Bearer ${sharing.token}` },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(5000),
+    redirect: "error",
   });
   const result = await response.json();
   if (!response.ok)
@@ -1000,8 +1020,91 @@ async function initialize() {
         });
       });
     },
+    "share.prepareRemote": async (b) => {
+      if (sharing || terminalRunning || loginController)
+        throw new Error(
+          "現在の共有接続/CLIを終了してから接続先を変更してください",
+        );
+      const url = httpsOrigin(b.url);
+      const advertised = await secureJson(
+        `${url}/.well-known/aidlc-workbench`,
+        { maxBytes: 65536 },
+      );
+      if (advertised.protocol !== 1 || advertised.transport !== "https")
+        throw new Error("対応するHTTPS共有サーバーではありません");
+      const policy = oidcPolicy(advertised.auth);
+      remoteConnection = { url, policy };
+      config.sharedServer = url;
+      await save();
+      return state();
+    },
+    "share.cancelLogin": async () => {
+      loginController?.abort();
+      return {};
+    },
+    "share.connectOidc": async (b) => {
+      if (!remoteConnection || loginController || sharing || terminalRunning)
+        throw new Error("先にHTTPS接続先を確認し、CLIを終了してください");
+      const connection = remoteConnection;
+      if (
+        b.expectedUrl !== connection.url ||
+        b.expectedIssuer !== connection.policy.issuer
+      )
+        throw new Error(
+          "確認した接続先/本人認証先が変わりました。もう一度確認してください",
+        );
+      loginController = new AbortController();
+      push();
+      try {
+        const challenge = await secureJson(`${connection.url}/auth/challenge`, {
+          method: "POST",
+          body: "{}",
+          signal: loginController.signal,
+        });
+        if (
+          !/^[a-f0-9]{64}$/.test(challenge.challenge) ||
+          !/^[a-f0-9]{64}$/.test(challenge.nonce)
+        )
+          throw new Error("ログインchallengeが不正です");
+        const idToken = await authorizeNative({
+          policy: connection.policy,
+          nonce: challenge.nonce,
+          signal: loginController.signal,
+          openBrowser: (url) => shell.openExternal(url),
+        });
+        const result = await secureJson(`${connection.url}/session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            challenge: challenge.challenge,
+            idToken,
+            invite: b.invite || undefined,
+          }),
+          signal: loginController.signal,
+        });
+        if (
+          !/^[a-f0-9]{64}$/.test(result.token) ||
+          result.adapter !== "oidc-mfa" ||
+          result.mfaVerified !== true
+        )
+          throw new Error("MFA共有セッションを確認できません");
+        sharing = {
+          url: connection.url,
+          token: result.token,
+          user: result.user,
+          adapter: result.adapter,
+          mfaVerified: true,
+          issuer: connection.policy.issuer,
+        };
+      } finally {
+        loginController = null;
+        push();
+      }
+      return state();
+    },
     "share.connect": async (b) => {
-      if (terminalRunning) throw new Error("先にCLIを終了してください");
+      if (terminalRunning || sharing || loginController)
+        throw new Error("先にCLIと現在の接続を終了してください");
       const url = new URL(b.url);
       if (
         url.protocol !== "http:" ||
@@ -1102,6 +1205,7 @@ async function initialize() {
       request(`/projects/${shared.id}/invites`, "POST", {
         role: b.role,
         user: b.user,
+        email: b.email,
       }),
     "share.comment": async (b) => {
       const context = b.context;
@@ -1267,6 +1371,7 @@ async function initialize() {
         "terminal.input",
         "terminal.resize",
         "terminal.stop",
+        "share.cancelLogin",
         "preview.bounds",
       ].includes(action);
       const rootBefore = workspace.active?.root;
@@ -1327,6 +1432,7 @@ async function initialize() {
     if (!watcher) void refresh();
   }, 3000);
   app.on("before-quit", (event) => {
+    loginController?.abort();
     if (closing) return;
     event.preventDefault();
     closing = true;

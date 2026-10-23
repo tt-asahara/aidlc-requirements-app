@@ -21,7 +21,7 @@
     "e2e:docker": "playwright test -c playwright.docker.config.ts",
     "v3:build": "bun run --cwd apps/desktop build",
     "v3:start": "bun run --cwd apps/desktop start",
-    "v3:test": "node --test apps/collaboration/service.nodecheck.mjs packages/workbench/local.nodecheck.mjs packages/workbench/releases.nodecheck.mjs",
+    "v3:test": "node --test apps/collaboration/service.nodecheck.mjs packages/workbench/local.nodecheck.mjs packages/workbench/releases.nodecheck.mjs packages/workbench/oidc.nodecheck.mjs",
     "v3:share": "node apps/collaboration/main.mjs"
   },
   "devDependencies": {

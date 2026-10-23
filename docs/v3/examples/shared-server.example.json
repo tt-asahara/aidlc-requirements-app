@@ -1,0 +1,15 @@
+{
+  "host": "0.0.0.0",
+  "port": 8443,
+  "publicOrigin": "https://workbench.example.invalid:8443",
+  "tls": {
+    "keyFile": "./tls/server.key",
+    "certFile": "./tls/server-fullchain.crt"
+  },
+  "oidc": {
+    "issuer": "https://login.example.invalid/tenant",
+    "clientId": "REPLACE_WITH_NATIVE_PUBLIC_CLIENT_ID",
+    "ownerSubject": "REPLACE_WITH_VERIFIED_OWNER_SUB",
+    "mfa": { "amr": ["mfa"], "acr": [] }
+  }
+}

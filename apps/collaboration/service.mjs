@@ -1,9 +1,15 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { createServer } from "node:http";
+import { createServer as createTlsServer } from "node:https";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { validateManifest } from "../../packages/workbench/manifest.mjs";
+import {
+  createOidcVerifier,
+  httpsOrigin,
+  identityId,
+} from "../../packages/workbench/oidc.mjs";
 
 const digest = (s) => createHash("sha256").update(s).digest("hex");
 const key = () => randomBytes(32).toString("hex");
@@ -15,8 +21,30 @@ export async function startService({
   port = 0,
   leaseMs = 60000,
   now = () => Date.now(),
+  host = "127.0.0.1",
+  publicOrigin,
+  tls,
+  oidc,
 } = {}) {
   if (!directory) throw new Error("Private data directory required");
+  const remote = !!oidc;
+  if (
+    remote !== !!tls ||
+    (!remote && (publicOrigin || !["127.0.0.1", "localhost"].includes(host)))
+  )
+    throw new Error("別PC向け共有にはTLSとOIDC/MFAの両方が必要です");
+  const origin = remote ? httpsOrigin(publicOrigin) : null;
+  const verifier = remote ? createOidcVerifier(oidc, { now }) : null;
+  if (
+    remote &&
+    (typeof oidc.ownerSubject !== "string" ||
+      !oidc.ownerSubject ||
+      oidc.ownerSubject.length > 300)
+  )
+    throw new Error("共有管理者の検証済みOIDC subjectを設定してください");
+  const configuredOwner = remote
+    ? identityId(verifier.policy.issuer, oidc.ownerSubject)
+    : null;
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path.join(directory, "collaboration.sqlite"));
   db.exec(
@@ -42,20 +70,33 @@ export async function startService({
     }
   };
   let owner = get("SELECT value FROM meta WHERE key='owner'")?.value;
+  if (remote && owner && owner !== configuredOwner) {
+    db.close();
+    throw new Error(
+      "既存DBの管理者/認証方式が異なります。別の専用データ領域が必要です",
+    );
+  }
   if (!owner) {
-    owner = randomUUID();
+    owner = configuredOwner ?? randomUUID();
     run("INSERT INTO users VALUES(?,?)", owner, "共有管理者");
     run("INSERT INTO meta VALUES(?,?)", "owner", owner);
   }
   const sessions = new Map(),
     invites = new Map(),
-    attempts = [];
-  const makeInvite = (user, project = null, role = "owner") => {
+    attempts = [],
+    challenges = new Map();
+  const makeInvite = (user, project = null, role = "owner", email = null) => {
     const code = key();
-    invites.set(digest(code), { user, project, role, expires: now() + 300000 });
+    invites.set(digest(code), {
+      user,
+      project,
+      role,
+      email,
+      expires: now() + 300000,
+    });
     return code;
   };
-  const bootstrapInvite = makeInvite(owner);
+  const bootstrapInvite = remote ? null : makeInvite(owner);
   function member(id, session) {
     const m = get(
       "SELECT role FROM members WHERE project=? AND user=?",
@@ -101,7 +142,7 @@ export async function startService({
     return { ...v, files: JSON.parse(v.manifest), manifest: undefined };
   }
   let address;
-  const server = createServer(async (req, res) => {
+  const handler = async (req, res) => {
     const send = (status, value) => {
       res.writeHead(status, {
         "Content-Type": "application/json",
@@ -118,12 +159,23 @@ export async function startService({
       )
         fail(403, "ブラウザ/転送ヘッダーからの直接接続は許可しません");
       if (
-        req.headers.host !== `127.0.0.1:${address.port}` &&
-        req.headers.host !== `localhost:${address.port}`
+        remote
+          ? req.headers.host !== new URL(origin).host
+          : req.headers.host !== `127.0.0.1:${address.port}` &&
+            req.headers.host !== `localhost:${address.port}`
       )
         fail(403, "Hostが不正です");
       const url = new URL(req.url, "http://127.0.0.1");
       if (url.search) fail(400, "query credentialsは禁止です");
+      if (
+        req.method === "GET" &&
+        url.pathname === "/.well-known/aidlc-workbench"
+      )
+        return send(200, {
+          protocol: 1,
+          transport: remote ? "https" : "loopback-http",
+          auth: remote ? verifier.policy : { adapter: "local-invitation" },
+        });
       let size = 0;
       const chunks = [];
       for await (const b of req) {
@@ -141,29 +193,89 @@ export async function startService({
       }
       if (!body || typeof body !== "object" || Array.isArray(body))
         fail(400, "bodyが不正です");
+      if (
+        remote &&
+        req.method === "POST" &&
+        url.pathname === "/auth/challenge"
+      ) {
+        for (const [id, value] of challenges)
+          if (value.expires <= now()) challenges.delete(id);
+        if (challenges.size >= 1000) fail(429, "しばらく待ってください");
+        const challenge = key(),
+          nonce = key();
+        challenges.set(digest(challenge), { nonce, expires: now() + 180000 });
+        return send(201, { challenge, nonce });
+      }
       if (req.method === "POST" && url.pathname === "/session") {
         while (attempts[0] < now() - 60000) attempts.shift();
         if (attempts.length >= 30) fail(429, "しばらく待ってください");
         attempts.push(now());
-        if (typeof body.invite !== "string" || body.invite.length !== 64)
-          fail(401, "招待コードが不正です");
-        const invite = invites.get(digest(body.invite));
-        if (!invite || invite.expires <= now())
+        let claims = null;
+        if (remote) {
+          const challenge =
+            typeof body.challenge === "string" &&
+            challenges.get(digest(body.challenge));
+          if (!challenge || challenge.expires <= now())
+            fail(401, "本人ログインをやり直してください");
+          challenges.delete(digest(body.challenge));
+          try {
+            claims = await verifier.verifyIdToken(
+              body.idToken,
+              challenge.nonce,
+            );
+          } catch {
+            fail(401, "OIDC本人認証/MFA/nonce/期限を確認できません");
+          }
+        }
+        const authenticatedUser =
+          claims && identityId(verifier.policy.issuer, claims.sub);
+        const invite =
+          typeof body.invite === "string" &&
+          body.invite.length === 64 &&
+          invites.get(digest(body.invite));
+        const returning =
+          remote &&
+          !body.invite &&
+          (authenticatedUser === owner ||
+            get(
+              "SELECT user FROM members WHERE user=? LIMIT 1",
+              authenticatedUser,
+            ));
+        if (!returning && (!invite || invite.expires <= now()))
           fail(401, "招待は無効/使用済み/期限切れです");
+        if (remote && invite) {
+          if (invite.user && invite.user !== authenticatedUser)
+            fail(403, "招待の本人IDが一致しません");
+          if (
+            invite.email &&
+            (claims.email_verified !== true ||
+              claims.email?.toLowerCase() !== invite.email)
+          )
+            fail(403, "招待先の確認済みメールアドレスが一致しません");
+        }
         if (
-          typeof body.name !== "string" ||
-          !body.name.trim() ||
-          body.name.length > 80
+          !remote &&
+          (typeof body.name !== "string" ||
+            !body.name.trim() ||
+            body.name.length > 80)
         )
           fail(400, "表示名が必要です");
-        invites.delete(digest(body.invite));
-        const user = invite.user ?? randomUUID();
+        if (invite) invites.delete(digest(body.invite));
+        const user = authenticatedUser || invite.user || randomUUID();
+        const displayName = remote
+          ? String(
+              claims.name ??
+                (claims.email_verified === true
+                  ? claims.email
+                  : "本人認証済み参加者"),
+            ).slice(0, 80)
+          : body.name.trim();
         run(
           "INSERT INTO users VALUES(?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name",
           user,
-          body.name.trim(),
+          displayName,
         );
-        if (invite.project)
+        if (invite?.project)
           run(
             "INSERT INTO members VALUES(?,?,?) ON CONFLICT(project,user) DO UPDATE SET role=excluded.role",
             invite.project,
@@ -174,13 +286,17 @@ export async function startService({
         sessions.set(digest(token), {
           id: randomUUID(),
           user,
-          expires: now() + 4 * 60 * 60 * 1000,
+          expires: Math.min(
+            now() + 4 * 60 * 60 * 1000,
+            remote ? claims.exp * 1000 : Infinity,
+          ),
         });
         return send(200, {
           token,
           user,
-          adapter: "local-invitation",
-          productionIdentityConfigured: false,
+          adapter: remote ? "oidc-mfa" : "local-invitation",
+          mfaVerified: remote,
+          productionIdentityConfigured: remote,
         });
       }
       const bearer = req.headers.authorization?.match(
@@ -277,8 +393,18 @@ export async function startService({
           )
         )
           fail(404, "参加者がありません");
+        let email = null;
+        if (remote && !body.user) {
+          if (
+            typeof body.email !== "string" ||
+            body.email.length > 254 ||
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)
+          )
+            fail(400, "招待先の確認済みメールアドレスが必要です");
+          email = body.email.toLowerCase();
+        }
         return send(201, {
-          invite: makeInvite(body.user ?? null, id, body.role),
+          invite: makeInvite(body.user ?? null, id, body.role, email),
           expires: now() + 300000,
         });
       }
@@ -408,18 +534,29 @@ export async function startService({
         error: error.status ? error.message : "入力/manifestを確認してください",
       });
     }
-  });
+  };
+  const server = remote
+    ? createTlsServer(
+        { key: tls.key, cert: tls.cert, minVersion: "TLSv1.2" },
+        handler,
+      )
+    : createServer(handler);
+  server.requestTimeout = 15000;
+  server.headersTimeout = 10000;
+  server.maxHeadersCount = 50;
   await new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, "127.0.0.1", resolve);
+    server.listen(port, host, resolve);
   });
   address = server.address();
   return {
-    url: `http://127.0.0.1:${address.port}`,
+    url: origin ?? `http://127.0.0.1:${address.port}`,
+    address: { host, port: address.port },
     bootstrapInvite,
     close: async () => {
       sessions.clear();
       invites.clear();
+      challenges.clear();
       await new Promise((r) => server.close(r));
       db.close();
     },
