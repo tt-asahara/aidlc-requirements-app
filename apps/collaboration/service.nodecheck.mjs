@@ -106,6 +106,24 @@ test("20 authenticated clients: memberships, exclusive lease, stale epoch/CAS, a
         sha256: hash(file),
       },
     ]);
+    const collisions = ["a.md", "a.md/b.md"].map((name) => ({
+      path: name,
+      data: file.toString("base64"),
+      sha256: hash(file),
+    }));
+    const rejectedTree = await request(
+      clients[winner],
+      `/projects/${id}/publish`,
+      "POST",
+      {
+        epoch: oldEpoch,
+        expectedVersion: base,
+        files: collisions,
+        manifestHash: "0".repeat(64),
+      },
+    );
+    assert.equal(rejectedTree.status, 400);
+    assert.equal((await request(owner, `/projects/${id}`)).body.head, base);
     const publish = await request(
       clients[winner],
       `/projects/${id}/publish`,
@@ -260,6 +278,17 @@ test("manifest excludes credentials and rejects traversal, symlink and hash tamp
   ])
     assert.throws(() =>
       validateManifest([{ path: name, data: "", sha256: hash("") }]),
+    );
+  for (const names of [
+    ["a.md", "a.md/b.md"],
+    ["A.md/b.md", "a.MD"],
+    ["É.md", "é.md/b.md"],
+    ["é.md", "e\u0301.md/b.md"],
+  ])
+    assert.throws(() =>
+      validateManifest(
+        names.map((name) => ({ path: name, data: "", sha256: hash("") })),
+      ),
     );
   const secret = Buffer.from("-----BEGIN PRIVATE KEY-----");
   assert.throws(() =>

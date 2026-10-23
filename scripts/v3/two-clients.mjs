@@ -50,7 +50,10 @@ try {
   await a.page.waitForFunction(() =>
     document.querySelector("#document").textContent.includes("第1共有版"),
   );
-  await call(a, "share.comment", { text: "この共有版を確認しました" });
+  await call(a, "share.comment", {
+    text: "この共有版を確認しました",
+    context: { project: id, version: published },
+  });
   await call(a, "share.revoke");
   await expect
     .poll(async () => (await call(b, "state")).active.editable)

@@ -167,6 +167,7 @@ test("interrupted harness apply restores only known before/after bytes, and unsa
     const receiptPath = path.join(saved.backup, "receipt.json"),
       receipt = JSON.parse(await fs.readFile(receiptPath));
     receipt.state = "prepared";
+    delete receipt.integrity; // A valid journal from the earlier format.
     await fs.writeFile(receiptPath, JSON.stringify(receipt));
     await fs.unlink(path.join(target, ".claude/skills/b.md"));
     await fs.unlink(path.join(target, ".v3-harness/current.json"));
@@ -204,6 +205,66 @@ test("local project path stays canonical across restarts and preserves workflow 
     const files = (await w.stable()).files;
     assert(files.some((f) => f.path === "aidlc/active-space"));
     assert(files.some((f) => f.path.endsWith("/active-intent")));
+  } finally {
+    await fs.rm(base, { recursive: true, force: true });
+  }
+});
+
+test("corrupt current metadata remains readable and validated journal restores staged bytes without deleting unknown files", async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), "v3-corrupt-"));
+  try {
+    const root = path.join(base, "project"),
+      source = path.join(base, "source");
+    await fs.mkdir(root);
+    await fs.mkdir(path.join(source, ".claude/skills"), { recursive: true });
+    await fs.writeFile(
+      path.join(source, ".claude/skills/test.md"),
+      "verified bytes",
+    );
+    const brief = await importHarness(source, path.join(base, "cache"));
+    const bundle = JSON.parse(
+      await fs.readFile(path.join(base, "cache", `${brief.id}.json`)),
+    );
+    const applied = await applyHarness(root, await harnessPlan(root, bundle));
+    const journalFile = path.join(applied.backup, "receipt.json");
+    const journal = JSON.parse(await fs.readFile(journalFile));
+    journal.state = "prepared";
+    delete journal.integrity;
+    await fs.writeFile(journalFile, JSON.stringify(journal));
+    const dest = path.join(root, ".claude/skills/test.md"),
+      stage = `${dest}.v3-stage`;
+    await fs.rename(dest, stage); // Stop after staging, before the destination rename.
+    await fs.writeFile(
+      path.join(root, ".v3-harness/current.json"),
+      '{"bundle":',
+    );
+    const status = await harnessStatus(root);
+    assert.equal(status.metadataCorrupt, true);
+    assert.equal(status.lastBackup.backup, applied.backup);
+    await assert.rejects(harnessPlan(root, bundle), /復元/);
+    await fs.writeFile(stage, "user edited stage");
+    await assert.rejects(rollbackHarness(root, applied.backup), /削除せず保全/);
+    assert.equal(await fs.readFile(stage, "utf8"), "user edited stage");
+    await fs.writeFile(stage, "verified bytes");
+    await rollbackHarness(root, applied.backup);
+    await assert.rejects(fs.stat(stage), { code: "ENOENT" });
+    assert.equal((await harnessStatus(root)).current, null);
+    const next = await applyHarness(root, await harnessPlan(root, bundle));
+    assert.equal(await fs.readFile(dest, "utf8"), "verified bytes");
+    // Also recover a committed install when only the metadata was truncated.
+    await fs.writeFile(path.join(root, ".v3-harness/current.json"), "{");
+    assert.equal((await harnessStatus(root)).lastBackup.backup, next.backup);
+    await rollbackHarness(root, next.backup);
+    await assert.rejects(fs.stat(dest), { code: "ENOENT" });
+    const tampered = JSON.parse(
+      await fs.readFile(path.join(next.backup, "receipt.json")),
+    );
+    tampered.state = "committed";
+    await fs.writeFile(
+      path.join(next.backup, "receipt.json"),
+      JSON.stringify(tampered),
+    );
+    await assert.rejects(rollbackHarness(root, next.backup), /hash/);
   } finally {
     await fs.rm(base, { recursive: true, force: true });
   }

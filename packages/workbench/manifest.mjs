@@ -83,6 +83,13 @@ export function validateManifest(input) {
       return { path: name, sha256: f.sha256, data: f.data };
     })
     .sort((a, b) => a.path.localeCompare(b.path, "en"));
+  // A file cannot also be a directory, including on case-insensitive volumes.
+  for (const name of seen) {
+    const parts = name.split("/");
+    for (let i = 1; i < parts.length; i++)
+      if (seen.has(parts.slice(0, i).join("/")))
+        throw new Error("ファイルと親ディレクトリのパスが衝突しています");
+  }
   return {
     files,
     hash: hash(

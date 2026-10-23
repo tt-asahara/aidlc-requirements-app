@@ -18,6 +18,7 @@ import {
 } from "electron";
 import {
   applyHarness,
+  atomicJson,
   cliEnvironment,
   fetchHarness,
   harnessPlan,
@@ -122,8 +123,7 @@ async function preserveRecovery() {
   });
   await fs.rename(file, path.join(data, "recoveries.json"));
 }
-const save = () =>
-  fs.writeFile(configPath, JSON.stringify(config), { mode: 0o600 });
+const save = () => atomicJson(configPath, config);
 const sendTerminal = (m) => {
   if (window && !window.isDestroyed())
     window.webContents.send("v3:terminal", m);
@@ -237,7 +237,16 @@ async function refresh() {
   const root = workspace.active.root;
   try {
     const result = await stableSnapshot(root);
-    const harness = await harnessStatus(root);
+    let harness;
+    try {
+      harness = await harnessStatus(root);
+    } catch (e) {
+      harness = { current: null, lastBackup: null, warnings: [e.message] };
+    }
+    if (harness.metadataCorrupt)
+      error =
+        "ハーネス管理JSONが破損しています。設定から直前の適用を復元できます。成果物は保全しています";
+    else if (harness.warnings?.length) error = harness.warnings.join("。 ");
     let projection;
     try {
       const progress = await readProgress(root, false, false);
@@ -282,7 +291,7 @@ async function refresh() {
         }
       }
       push();
-    }
+    } else if (harness.metadataCorrupt || harness.warnings?.length) push();
   } catch (e) {
     error = e.message;
     push();
@@ -1095,8 +1104,21 @@ async function initialize() {
         user: b.user,
       }),
     "share.comment": async (b) => {
-      await request(`/projects/${shared.id}/comments`, "POST", {
-        version: shared.head,
+      const context = b.context;
+      if (
+        !shared ||
+        !context ||
+        context.project !== shared.id ||
+        typeof context.version !== "string" ||
+        !shared.history?.some((v) => v.id === context.version)
+      )
+        throw new Error(
+          "コメントの対象案件/版が変わりました。下書きを保持して対象を確認してください",
+        );
+      if (context.version !== shared.head && b.confirmOldVersion !== true)
+        throw new Error("旧版へのコメントです。対象版を確認してください");
+      await request(`/projects/${context.project}/comments`, "POST", {
+        version: context.version,
         text: b.text,
       });
       await pollInside();

@@ -95,7 +95,42 @@ function el(tag, text) {
   if (text !== undefined) e.textContent = text;
   return e;
 }
+let commentContext = null;
+const commentDrafts = new Map();
+function preserveCommentDraft() {
+  if (commentContext)
+    commentDrafts.set(commentContext.project, {
+      context: commentContext,
+      text: $("comment").value,
+    });
+}
+function renderCommentDraft(s) {
+  if (commentContext?.project !== s.shared?.id) {
+    preserveCommentDraft();
+    const draft = commentDrafts.get(s.shared?.id);
+    commentContext =
+      draft?.context ??
+      (s.shared ? { project: s.shared.id, version: s.shared.head } : null);
+    $("comment").value = draft?.text ?? "";
+  } else if (!$("comment").value && s.shared)
+    commentContext = { project: s.shared.id, version: s.shared.head };
+  const old = commentContext && commentContext.version !== s.shared?.head;
+  $("commentContext").textContent = commentContext
+    ? `対象: ${s.shared?.name} / 版 ${commentContext.version.slice(0, 8)}${old ? "（旧版へのコメント・送信前に確認）" : ""}。案件を切り替えても下書きを保持します。`
+    : "共有案件を開くと、その案件と版にコメントできます。";
+  $("addComment").disabled = !s.shared || !$("comment").value.trim();
+  $("addComment").textContent = old
+    ? "この旧版へコメントする"
+    : "コメントを送信";
+}
+$("comment").addEventListener("input", () => {
+  if (!commentContext && state.shared)
+    commentContext = { project: state.shared.id, version: state.shared.head };
+  preserveCommentDraft();
+  renderCommentDraft(state);
+});
 function render(s) {
+  renderCommentDraft(s);
   if (renderedRoot !== s.active?.root) {
     renderedRoot = s.active?.root;
     $("annotation").hidden = true;
@@ -537,8 +572,27 @@ button("revokeLease", () => {
     return call("share.revoke");
 });
 button("addComment", async () => {
-  await call("share.comment", { text: $("comment").value });
-  $("comment").value = "";
+  const context = commentContext && { ...commentContext },
+    text = $("comment").value;
+  const old = context?.version !== state.shared?.head;
+  if (
+    old &&
+    !window.confirm(
+      `版 ${context?.version?.slice(0, 8)} へのコメントです。最新版には付けません。送信しますか？`,
+    )
+  )
+    return;
+  await call("share.comment", { text, context, confirmOldVersion: old });
+  // A delayed response cannot erase a newer draft or another project's draft.
+  if (
+    context?.project === commentContext?.project &&
+    context?.version === commentContext?.version &&
+    $("comment").value === text
+  ) {
+    $("comment").value = "";
+    commentDrafts.delete(context.project);
+    renderCommentDraft(state);
+  }
 });
 let paneWidths = { left: 480, right: 260 },
   paneInitialized = false,

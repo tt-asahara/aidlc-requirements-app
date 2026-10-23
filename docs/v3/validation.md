@@ -63,3 +63,10 @@ The explicit optional `official-harness-check.mjs <local prepared distribution>`
 
 
 Latest executable acceptance is `ae0ce69004e9`: the packaged startup-button/create-project path reaches the real official Claude TUI, resize changes 53→89 columns, and stop confirms the owned PID has disappeared. `packaged-tui-current.json` stores this actual runtime build commit and exact application path; `packaged-acceptance.json` matches the same revision and verifies restart. Superseded `c230214` packages failed the pre-ready initialization check and are not accepted. Test-only evidence refinements can have a later repository commit without changing this executable's source.
+
+
+## Independent review corrections
+
+- Management JSON uses same-directory temporary files, fsync and rename. A truncated current receipt no longer prevents artifact projection; validated backup journals remain available for explicit recovery. Staged bytes are removed only when journal path/hash ownership matches. Unknown stage contents and modified installed files remain untouched.
+- Publication rejects file/directory prefix conflicts after normalization/case folding before updating the shared head.
+- Comment drafts retain project and version through project switches and head updates. An old-version comment needs explicit confirmation and cannot be silently attached to another project/head. Electron UI regression covers the switch/update/send path.
