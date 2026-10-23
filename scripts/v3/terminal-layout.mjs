@@ -42,6 +42,7 @@ try {
       const rows = document.querySelector(".xterm-rows");
       return {
         pty: s.terminalSize,
+        buildCommit: s.runtime?.buildCommit,
         pid: s.ptyPid,
         running: s.terminalRunning,
         host: { width: host.width, height: host.height },
@@ -127,6 +128,11 @@ try {
       await record(options.packaged ? "packaged-tui" : "desktop-tui", {
         at: new Date().toISOString(),
         directory: app.directory,
+        commit: first.buildCommit,
+        application: options.executable
+          ? path.resolve(options.executable, "../../..")
+          : path.resolve("apps/desktop"),
+        onboarding: process.argv.includes("--onboarding"),
         first,
         wider,
         modelSent: false,

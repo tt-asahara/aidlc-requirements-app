@@ -60,3 +60,6 @@ The explicit optional `official-harness-check.mjs <local prepared distribution>`
 
 - Disconnect acceptance now also stops the synthetic hosting process, verifies the other client's running official CLI is not falsely marked stopped, quarantines late local output, and releases only the disconnecting session's lease. Service restart preserves the head while invalidating old memory-only sessions/lease epochs.
 - Scheme/sandbox/profile initialization is synchronous before ESM loading; packaged cold/restart acceptance catches the Electron ready-order race.
+
+
+Latest executable acceptance is `ae0ce69004e9`: the packaged startup-button/create-project path reaches the real official Claude TUI, resize changes 53→89 columns, and stop confirms the owned PID has disappeared. `packaged-tui-current.json` stores this actual runtime build commit and exact application path; `packaged-acceptance.json` matches the same revision and verifies restart. Superseded `c230214` packages failed the pre-ready initialization check and are not accepted. Test-only evidence refinements can have a later repository commit without changing this executable's source.

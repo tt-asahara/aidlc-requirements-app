@@ -31,6 +31,9 @@ try {
   const p = app.page;
   await p.locator("#openLocal").click();
   await p.locator("#settings").click();
+  await p
+    .getByText("ソースの取得／ローカル準備済み配布", { exact: true })
+    .click();
   await p.locator("#importHarness").click();
   await p.locator("#planHarness").click();
   await expect(p.locator("#harnessDiff")).toContainText(
