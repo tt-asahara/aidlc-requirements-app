@@ -16,6 +16,7 @@ import {
   utilityProcess,
   WebContentsView,
 } from "electron";
+import { LeaseHeartbeat } from "../../packages/workbench/lease-heartbeat.mjs";
 import {
   applyHarness,
   atomicJson,
@@ -229,18 +230,21 @@ function editable() {
 }
 async function request(route, method = "GET", body) {
   if (!sharing) throw new Error("共有サービスへ接続してください");
-  if (sharing.url.startsWith("https:"))
-    return secureJson(sharing.url + route, {
+  return requestAt(sharing, route, method, body);
+}
+async function requestAt(connection, route, method = "GET", body) {
+  if (connection.url.startsWith("https:"))
+    return secureJson(connection.url + route, {
       method,
       headers: {
-        Authorization: `Bearer ${sharing.token}`,
+        Authorization: `Bearer ${connection.token}`,
         "Content-Type": "application/json",
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  const response = await fetch(sharing.url + route, {
+  const response = await fetch(connection.url + route, {
     method,
-    headers: { Authorization: `Bearer ${sharing.token}` },
+    headers: { Authorization: `Bearer ${connection.token}` },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(5000),
     redirect: "error",
@@ -558,7 +562,7 @@ async function poll() {
 async function pollInside() {
   if (!shared || !sharing) return;
   try {
-    let latest = await request(`/projects/${shared.id}`);
+    const latest = await request(`/projects/${shared.id}`);
     if (workspace.active?.editable) {
       if (
         latest.epoch !== workspace.active.epoch ||
@@ -566,13 +570,6 @@ async function pollInside() {
         latest.lease.expires <= latest.serverNow
       )
         loseLease("編集権が失効しました");
-      else
-        latest = {
-          ...latest,
-          ...(await request(`/projects/${shared.id}/lease/renew`, "POST", {
-            epoch: workspace.active.epoch,
-          })),
-        };
     }
     if (
       !workspace.active?.editable &&
@@ -597,6 +594,54 @@ async function pollInside() {
     push();
   }
 }
+function leaseCapture() {
+  if (
+    closing ||
+    !sharing ||
+    !shared ||
+    !workspace.active?.editable ||
+    !workspace.active.lease ||
+    workspace.active.quarantined
+  )
+    return null;
+  return {
+    connection: sharing,
+    project: shared.id,
+    root: workspace.active.root,
+    epoch: workspace.active.epoch,
+  };
+}
+function currentLease(frozen) {
+  const active = leaseCapture();
+  return (
+    active &&
+    active.connection === frozen?.connection &&
+    active.project === frozen.project &&
+    active.root === frozen.root &&
+    active.epoch === frozen.epoch
+  );
+}
+const leaseKeeper = new LeaseHeartbeat({
+  capture: leaseCapture,
+  renew: (frozen) =>
+    requestAt(
+      frozen.connection,
+      `/projects/${frozen.project}/lease/renew`,
+      "POST",
+      { epoch: frozen.epoch },
+    ),
+  accepted: (_frozen, latest) => {
+    shared = { ...shared, lease: latest.lease, serverNow: latest.serverNow };
+    push();
+  },
+  failed: (_frozen, e) => {
+    loseLease(
+      e.status === 409 || e.status === 403
+        ? "編集権が失効しました"
+        : "共有接続を確認できません",
+    );
+  },
+});
 async function initialize() {
   await app.whenReady();
   if (/^[a-f0-9]{64}$/.test(config.prepared ?? "")) {
@@ -1160,14 +1205,24 @@ async function initialize() {
     },
     "share.publish": async () => {
       editable();
+      const frozen = leaseCapture();
       const manifest = await workspace.stable();
-      const p = await request(`/projects/${shared.id}/publish`, "POST", {
-        epoch: workspace.active.epoch,
-        expectedVersion: workspace.active.version,
-        files: manifest.files,
-        manifestHash: manifest.hash,
-        message: "変更を反映",
-      });
+      if (!currentLease(frozen))
+        throw new Error(
+          "編集中に対象/編集権が変わりました。未反映の出力は保全します",
+        );
+      const p = await requestAt(
+        frozen.connection,
+        `/projects/${frozen.project}/publish`,
+        "POST",
+        {
+          epoch: workspace.active.epoch,
+          expectedVersion: workspace.active.version,
+          files: manifest.files,
+          manifestHash: manifest.hash,
+          message: "変更を反映",
+        },
+      );
       workspace.active.version = p.head;
       workspace.active.hash = manifest.hash;
       shared = { ...shared, ...p };
@@ -1190,12 +1245,23 @@ async function initialize() {
     "share.restore": async (b) => {
       editable();
       if (terminalRunning) throw new Error("復元前にCLIを終了してください");
-      const p = await request(`/projects/${shared.id}/restore`, "POST", {
-        epoch: workspace.active.epoch,
-        expectedVersion: shared.head,
-        target: b.version,
-      });
-      const v = await request(`/projects/${shared.id}/versions/${p.head}`);
+      const frozen = leaseCapture();
+      const p = await requestAt(
+        frozen.connection,
+        `/projects/${frozen.project}/restore`,
+        "POST",
+        {
+          epoch: workspace.active.epoch,
+          expectedVersion: shared.head,
+          target: b.version,
+        },
+      );
+      const v = await requestAt(
+        frozen.connection,
+        `/projects/${frozen.project}/versions/${p.head}`,
+      );
+      if (!currentLease(frozen))
+        throw new Error("復元中に編集権が変わりました。出力は保全します");
       await workspace.edit(p, v, p.epoch);
       shared = { ...shared, ...p };
       observe();
@@ -1427,6 +1493,7 @@ async function initialize() {
     ptyWorker?.postMessage({ type: "heartbeat" });
     serviceWorker?.postMessage({ type: "heartbeat" });
   }, 2000);
+  leaseKeeper.start();
   const polling = setInterval(() => void poll(), 3000);
   const fallback = setInterval(() => {
     if (!watcher) void refresh();
@@ -1437,6 +1504,7 @@ async function initialize() {
     event.preventDefault();
     closing = true;
     void (async () => {
+      leaseKeeper.stop();
       clearInterval(heartbeat);
       clearInterval(polling);
       clearInterval(fallback);

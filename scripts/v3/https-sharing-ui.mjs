@@ -4,6 +4,7 @@ import path from "node:path";
 import { expect } from "@playwright/test";
 import { launchDesktop } from "./electron-driver.mjs";
 import { httpsFixture } from "./https-fixture.mjs";
+import { installTestBrowser } from "./oidc-test-browser.mjs";
 import { record } from "./record.mjs";
 
 const fixture = await httpsFixture(),
@@ -25,25 +26,8 @@ const options = {
 let a, b;
 const call = (app, action, body = {}) =>
   app.page.evaluate(([x, y]) => window.workbench.invoke(x, y), [action, body]);
-async function testBrowser(app, forward = true) {
-  // Only the OS browser launcher is replaced through this isolated process's
-  // explicitly enabled Node inspector. Production entry/IPC/auth code is unchanged.
-  await app.mainEvaluate(`(async()=>{
-    const {shell}=process.getBuiltinModule('module').createRequire(process.cwd()+'/v3-test.cjs')('electron');
-    shell.openExternal=async url=>{
-      if(new URL(url).origin!==${JSON.stringify(fixture.issuer)})throw new Error('unexpected test issuer');
-      ${
-        forward
-          ? `const https=process.getBuiltinModule('https'),http=process.getBuiltinModule('http');
-      const location=await new Promise((resolve,reject)=>https.get(url,res=>{res.resume();resolve(res.headers.location);}).on('error',reject));
-      const target=new URL(location);
-      if(target.protocol!=='http:'||target.hostname!=='127.0.0.1'||target.pathname!=='/oidc-callback')throw new Error('unexpected callback');
-      await new Promise((resolve,reject)=>http.get(target,res=>{res.resume();res.on('end',resolve);}).on('error',reject));`
-          : ""
-      }
-    };return true;
-  })()`);
-}
+const testBrowser = (app, forward = true) =>
+  installTestBrowser(app, fixture.issuer, forward);
 async function prepare(app, invite = "") {
   await app.page.locator("#sharing").click();
   await app.page.locator("#shareUrl").fill(service.url);

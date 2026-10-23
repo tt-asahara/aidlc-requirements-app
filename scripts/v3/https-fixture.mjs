@@ -180,7 +180,7 @@ export async function httpsFixture() {
     clientId: "synthetic-desktop-client",
     mfa: { amr: ["mfa"], acr: [] },
   };
-  async function startShared() {
+  async function startShared(options = {}) {
     const reservation = tcpServer();
     await new Promise((r) => reservation.listen(0, "127.0.0.1", r));
     const port = reservation.address().port;
@@ -192,6 +192,7 @@ export async function httpsFixture() {
       publicOrigin: `https://127.0.0.1:${port}`,
       tls,
       oidc: { ...policy, ownerSubject: "owner-sub" },
+      ...options,
     });
   }
   async function openBrowser(url) {

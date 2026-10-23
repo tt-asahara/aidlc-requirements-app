@@ -83,8 +83,29 @@ export async function startService({
   }
   const sessions = new Map(),
     invites = new Map(),
-    attempts = [],
+    failuresBySource = new Map(),
+    challengeIssuesBySource = new Map(),
+    authenticationBySource = new Map(),
     challenges = new Map();
+  let authenticationInFlight = 0;
+  function takeWindow(table, source, limit) {
+    for (const [key, bucket] of table)
+      if (now() - bucket.start >= 60000) table.delete(key);
+    let bucket = table.get(source);
+    if (!bucket) {
+      if (table.size >= 4096) return false;
+      bucket = { start: now(), count: 0 };
+      table.set(source, bucket);
+    }
+    if (bucket.count >= limit) return false;
+    bucket.count++;
+    return true;
+  }
+  function invalidAuthentication(source, status, message) {
+    if (!takeWindow(failuresBySource, source, 30))
+      fail(429, "この送信元の無効な認証要求を制限しています");
+    fail(status, message);
+  }
   const makeInvite = (user, project = null, role = "owner", email = null) => {
     const code = key();
     invites.set(digest(code), {
@@ -155,7 +176,8 @@ export async function startService({
       if (
         req.headers.origin ||
         req.headers["x-forwarded-host"] ||
-        req.headers["x-forwarded-for"]
+        req.headers["x-forwarded-for"] ||
+        req.headers.forwarded
       )
         fail(403, "ブラウザ/転送ヘッダーからの直接接続は許可しません");
       if (
@@ -165,6 +187,9 @@ export async function startService({
             req.headers.host !== `localhost:${address.port}`
       )
         fail(403, "Hostが不正です");
+      // Only the actual socket is a source identity; forwarded/client headers
+      // cannot select another user's rate bucket.
+      const source = req.socket.remoteAddress;
       const url = new URL(req.url, "http://127.0.0.1");
       if (url.search) fail(400, "query credentialsは禁止です");
       if (
@@ -180,7 +205,13 @@ export async function startService({
       const chunks = [];
       for await (const b of req) {
         size += b.length;
-        if (size > 29 * 1024 * 1024) fail(413, "容量上限です");
+        const maximum =
+          url.pathname === "/session"
+            ? 24000
+            : url.pathname === "/auth/challenge"
+              ? 1024
+              : 29 * 1024 * 1024;
+        if (size > maximum) fail(413, "容量上限です");
         chunks.push(b);
       }
       let body = {};
@@ -200,31 +231,68 @@ export async function startService({
       ) {
         for (const [id, value] of challenges)
           if (value.expires <= now()) challenges.delete(id);
-        if (challenges.size >= 1000) fail(429, "しばらく待ってください");
+        // Issuance/storage protection is separate from invalid login attempts.
+        if (
+          !takeWindow(challengeIssuesBySource, source, 120) ||
+          [...challenges.values()].filter((value) => value.source === source)
+            .length >= 32 ||
+          challenges.size >= 1000
+        )
+          fail(429, "認証challengeの発行上限です。少し待ってください");
         const challenge = key(),
           nonce = key();
-        challenges.set(digest(challenge), { nonce, expires: now() + 180000 });
+        challenges.set(digest(challenge), {
+          nonce,
+          source,
+          expires: now() + 180000,
+        });
         return send(201, { challenge, nonce });
       }
       if (req.method === "POST" && url.pathname === "/session") {
-        while (attempts[0] < now() - 60000) attempts.shift();
-        if (attempts.length >= 30) fail(429, "しばらく待ってください");
-        attempts.push(now());
         let claims = null;
         if (remote) {
           const challenge =
             typeof body.challenge === "string" &&
             challenges.get(digest(body.challenge));
-          if (!challenge || challenge.expires <= now())
-            fail(401, "本人ログインをやり直してください");
+          if (
+            !challenge ||
+            challenge.expires <= now() ||
+            challenge.source !== source
+          )
+            invalidAuthentication(
+              source,
+              401,
+              "本人ログインをやり直してください",
+            );
+          // Valid, source-bound challenges do not consume the invalid-request
+          // bucket. Global and per-source concurrency bound expensive verification.
+          if (
+            authenticationInFlight >= 8 ||
+            (authenticationBySource.get(source) ?? 0) >= 2
+          )
+            fail(429, "本人認証を確認中です。少し待って再接続してください");
           challenges.delete(digest(body.challenge));
+          authenticationInFlight++;
+          authenticationBySource.set(
+            source,
+            (authenticationBySource.get(source) ?? 0) + 1,
+          );
           try {
             claims = await verifier.verifyIdToken(
               body.idToken,
               challenge.nonce,
             );
           } catch {
-            fail(401, "OIDC本人認証/MFA/nonce/期限を確認できません");
+            invalidAuthentication(
+              source,
+              401,
+              "OIDC本人認証/MFA/nonce/期限を確認できません",
+            );
+          } finally {
+            authenticationInFlight--;
+            const remaining = authenticationBySource.get(source) - 1;
+            if (remaining) authenticationBySource.set(source, remaining);
+            else authenticationBySource.delete(source);
           }
         }
         const authenticatedUser =
@@ -242,7 +310,11 @@ export async function startService({
               authenticatedUser,
             ));
         if (!returning && (!invite || invite.expires <= now()))
-          fail(401, "招待は無効/使用済み/期限切れです");
+          invalidAuthentication(
+            source,
+            401,
+            "招待は無効/使用済み/期限切れです",
+          );
         if (remote && invite) {
           if (invite.user && invite.user !== authenticatedUser)
             fail(403, "招待の本人IDが一致しません");
@@ -557,6 +629,8 @@ export async function startService({
       sessions.clear();
       invites.clear();
       challenges.clear();
+      failuresBySource.clear();
+      challengeIssuesBySource.clear();
       await new Promise((r) => server.close(r));
       db.close();
     },
