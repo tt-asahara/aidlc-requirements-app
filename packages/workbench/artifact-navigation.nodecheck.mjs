@@ -26,6 +26,18 @@ test("normal navigation separates screen stages and semantic documents from inte
   ])
     assert.equal(artifactKind(n), null, n);
   assert.equal(artifactKind("mockups/予約-rough.html"), "screen");
+  assert.equal(
+    artifactKind(
+      "aidlc/spaces/test/intents/test/ideation/rough-mockups/assets/index.html",
+    ),
+    "screen",
+  );
+  assert.equal(
+    artifactKind(
+      "aidlc/spaces/test/intents/test/ideation/rough-mockups/assets/tests/debug.html",
+    ),
+    null,
+  );
   assert.equal(screenStage("mockups/予約-rough.html"), "rough");
   assert.equal(screenStage("inception/refined-mockups/index.html"), "refined");
   assert.equal(

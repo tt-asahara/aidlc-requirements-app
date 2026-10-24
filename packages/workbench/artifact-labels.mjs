@@ -6,7 +6,11 @@ const internalName =
 export function artifactKind(name) {
   if (/(?:^|\/)design-document\//.test(name) && /\.md$/i.test(name))
     return "design";
-  if (internal.test(name) || internalName.test(name.split("/").at(-1)))
+  // A registered space/intent may itself be named "test" or "source".
+  // Classify its artifact-relative directories, not those logical identifiers.
+  const relative =
+    name.match(/^aidlc\/spaces\/[^/]+\/intents\/[^/]+\/(.*)$/)?.[1] ?? name;
+  if (internal.test(relative) || internalName.test(name.split("/").at(-1)))
     return null;
   if (/\.html$/i.test(name)) return "screen";
   if (!/\.(md|txt)$/i.test(name)) return null;
