@@ -25,6 +25,8 @@ let state = {},
   renderedRoot = null,
   selectionRequest = 0,
   pendingSelection = null,
+  stageTransitions = 0,
+  observedSelectionPath = null,
   securityReviewKey = "",
   creatingLocal = false;
 const setDocument = documentView(
@@ -165,6 +167,15 @@ function render(s) {
     $("empty").hidden = !!s.selected;
   }
   state = s;
+  if (observedSelectionPath !== s.selected?.path) {
+    observedSelectionPath = s.selected?.path;
+    if (
+      observedSelectionPath?.endsWith(".html") &&
+      !pendingSelection &&
+      !stageTransitions
+    )
+      $("screenStageFilter").value = screenStage(observedSelectionPath);
+  }
   $("buildLabel").textContent =
     s.runtime?.buildCommit === "development"
       ? "開発版"
@@ -460,28 +471,33 @@ $("viewRound").onchange = () => {
 };
 $("workflowContext").addEventListener("toggle", layout);
 async function changeStage(kind) {
-  const active = state.active;
-  if (!active) return;
-  const source = pendingSelection?.path ?? state.selected?.path;
-  if (source && !source.endsWith(".html")) {
-    renderWorkflow();
-    return;
-  }
-  if (kind === "all") {
-    renderWorkflow();
-    return;
-  }
-  const target = stageCandidate(state, kind);
-  if (target) {
-    if (target !== state.selected?.path || pendingSelection)
-      await select(target);
-    else renderWorkflow();
-  } else {
-    ++selectionRequest;
-    pendingSelection = null;
-    await call("files.clear", { root: active.root });
-    renderWorkflow();
-    layout();
+  stageTransitions++;
+  try {
+    const active = state.active;
+    if (!active) return;
+    const source = pendingSelection?.path ?? state.selected?.path;
+    if (source && !source.endsWith(".html")) {
+      renderWorkflow();
+      return;
+    }
+    if (kind === "all") {
+      renderWorkflow();
+      return;
+    }
+    const target = stageCandidate(state, kind);
+    if (target) {
+      if (target !== state.selected?.path || pendingSelection)
+        await select(target);
+      else renderWorkflow();
+    } else {
+      ++selectionRequest;
+      pendingSelection = null;
+      await call("files.clear", { root: active.root });
+      renderWorkflow();
+      layout();
+    }
+  } finally {
+    stageTransitions--;
   }
 }
 api.onState(render);

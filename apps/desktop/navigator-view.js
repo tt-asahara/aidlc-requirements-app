@@ -4,6 +4,7 @@ import {
   artifactLabel,
   screenStage,
 } from "../../packages/workbench/artifact-labels.mjs";
+import { screenEntries } from "../../packages/workbench/preview-selection.mjs";
 export function navigatorView(current, call, select, changeStage) {
   const $ = (id) => document.getElementById(id),
     keys = new Map();
@@ -49,6 +50,8 @@ export function navigatorView(current, call, select, changeStage) {
           `${artifactContext(f.path)} · ${f.path.split("/").slice(-2).join("/")}`,
         ),
       );
+      if (f.referenceOnly)
+        b.append(el("small", "契約の画面参照 · 開く時に原本を検証"));
       b.onclick = () => void select(f.path).catch(() => {});
       box.append(b);
     }
@@ -63,7 +66,7 @@ export function navigatorView(current, call, select, changeStage) {
     $("cancelFiles").disabled = !inv?.hasNext || inv.cancelled;
     const query = $("screenSearch").value.trim().toLocaleLowerCase(),
       stage = $("screenStageFilter").value;
-    const screens = (s.files ?? []).filter(
+    const screens = screenEntries(s).filter(
       (f) =>
         artifactKind(f.path) === "screen" &&
         (stage === "all" || screenStage(f.path) === stage) &&

@@ -428,6 +428,7 @@ body [hidden],
 .preview-toolbar {
   margin-bottom: 6px;
   align-items: center;
+  flex-direction: row;
 }
 .preview-toolbar > div {
   min-width: 0;

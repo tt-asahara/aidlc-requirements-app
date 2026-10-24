@@ -4,6 +4,7 @@ import {
   contractForFile,
   mappingsForFile,
   mappingTarget,
+  screenEntries,
   stageCandidate,
 } from "./preview-selection.mjs";
 
@@ -84,6 +85,18 @@ test("the primary stage action uses bounded page/contract metadata and never aut
     workflow: { mockups: projection },
   };
   assert.equal(stageCandidate(state, "refined"), file);
+  assert(
+    screenEntries(state).some(
+      (f) => f.path === `${folder}/assets/other.html` && f.referenceOnly,
+    ),
+  );
+  assert.equal(
+    screenEntries({
+      ...state,
+      files: [{ path: file, revision: "actual-metadata" }],
+    }).filter((f) => f.path === file).length,
+    1,
+  );
   assert.equal(stageCandidate(state, "rough"), null);
   assert.equal(stageCandidate(state, "all"), null);
   assert.equal(

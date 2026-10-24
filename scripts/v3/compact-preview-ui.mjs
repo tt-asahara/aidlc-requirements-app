@@ -4,6 +4,7 @@ import path from "node:path";
 import { expect } from "@playwright/test";
 import { compactFixture } from "./compact-preview-fixture.mjs";
 import { launchDesktop } from "./electron-driver.mjs";
+import { previewWindowImage } from "./preview-window-image.mjs";
 import { record } from "./record.mjs";
 
 const baseline = process.argv.includes("--baseline"),
@@ -60,9 +61,10 @@ try {
     .poll(async () => (await geometry()).preview.height)
     .toBeGreaterThan(100);
   const measured = await geometry();
-  await app.page.screenshot({
-    path: path.join(app.directory, baseline ? "before.png" : "after.png"),
-  });
+  await previewWindowImage(
+    app,
+    path.join(app.directory, baseline ? "before.png" : "after.png"),
+  );
   let checks = {};
   if (!baseline) {
     const old = JSON.parse(
@@ -91,6 +93,17 @@ try {
     assert(
       !(await app.page.locator("#mapping").innerText()).includes("予約詳細"),
     );
+    await app.page
+      .locator(`button[data-file-path="${fixture.refined.other}"]`)
+      .click();
+    await expect
+      .poll(async () => (await call("state")).selected?.path)
+      .toBe(fixture.refined.other);
+    await expect(app.page.locator("#mapping option")).toHaveCount(2);
+    await app.page
+      .locator(`button[data-file-path="${fixture.refined.html}"]`)
+      .click();
+    await expect(app.page.locator("#mapping option")).toHaveCount(4);
     await app.page.locator("#mapping").selectOption("1");
     assert.equal(
       (await call("state")).selected.path,
@@ -153,6 +166,10 @@ try {
       .poll(async () => (await call("state")).selected?.path)
       .toBe(fixture.rough.html);
     await expect(app.page.locator("#screenStageFilter")).toHaveValue("rough");
+    await call("files.select", { path: fixture.refined.html });
+    await expect(app.page.locator("#screenStageFilter")).toHaveValue("refined");
+    await call("files.select", { path: fixture.rough.html });
+    await expect(app.page.locator("#screenStageFilter")).toHaveValue("rough");
     await call("files.clear", { root: "/not-the-current-project" });
     assert.equal(
       (await call("state")).selected.path,
@@ -170,6 +187,9 @@ try {
       `(()=>{const {BrowserWindow}=process.getBuiltinModule('module').createRequire(process.cwd()+'/v3-test.cjs')('electron');const w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('/dist/index.html'));w.setSize(960,820);return true;})()`,
     );
     await expect.poll(async () => (await geometry()).viewport.width).toBe(960);
+    await expect
+      .poll(async () => (await geometry()).center.width)
+      .toBeGreaterThanOrEqual(300);
     const narrow = await geometry();
     assert(narrow.preview.height >= 260);
     assert(narrow.context.height < 65);
@@ -191,6 +211,7 @@ try {
       heightGain: measured.preview.height - old.geometry.preview.height,
       narrow,
       onlyPrimaryStageControl: true,
+      otherContractHtmlAvailableFromPrimaryList: true,
       currentHtmlMappingsOnly: true,
       allMappingsPreserved: true,
       noAutomaticStateChoice: true,
@@ -214,6 +235,9 @@ try {
           appCommit: (await call("state")).runtime.buildCommit,
           packaged,
           baseline,
+          nativePreviewIncludedInScreenshots: true,
+          imageMethod:
+            "renderer and real native preview at actual bounds; isolated fixture",
           geometry: measured,
           ...checks,
           directory: app.directory,
