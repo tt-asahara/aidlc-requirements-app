@@ -71,6 +71,7 @@ test("late resources, secret content, directory escapes and symlinks cannot bypa
     await scene.read("mock/later.png");
     await assert.rejects(scene.prove(proof), /古い版/);
     await assert.rejects(scene.read("outside.js"), /directory/);
+    await assert.rejects(scene.prove(), /directory/);
     scene = await new PreviewScene(root, "mock/index.html").initialize();
     await fs.writeFile(
       path.join(root, "mock/private.js"),
@@ -84,6 +85,33 @@ test("late resources, secret content, directory escapes and symlinks cannot bypa
     scene = await new PreviewScene(root, "mock/index.html").initialize();
     await assert.rejects(scene.read("mock/link.js"), /symlink/);
   } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("preflight path and queue failures invalidate capture without opening refused resources", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "v3-scene-preflight-"));
+  try {
+    await fs.writeFile(path.join(root, "index.html"), "<h1>safe</h1>");
+    let scene = await new PreviewScene(root, "index.html").initialize();
+    const original = fs.open;
+    let opens = 0;
+    t.mock.method(fs, "open", async (...args) => {
+      opens++;
+      return original(...args);
+    });
+    await assert.rejects(scene.read("credentials/key.js"), /対象外/);
+    await assert.rejects(scene.prove(), /対象外/);
+    assert.equal(opens, 0);
+    t.mock.restoreAll();
+    scene = await new PreviewScene(root, "index.html").initialize();
+    // Saturate the admission counter; no file I/O should precede this check.
+    scene.pending = 32;
+    await assert.rejects(scene.read("index.html"), /同時読取上限/);
+    scene.pending = 0;
+    await assert.rejects(scene.prove(), /同時読取上限/);
+  } finally {
+    t.mock.restoreAll();
     await fs.rm(root, { recursive: true, force: true });
   }
 });

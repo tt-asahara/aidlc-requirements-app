@@ -784,10 +784,6 @@ async function initialize() {
         .slice(2)
         .map(decodeURIComponent)
         .join("/");
-      safeName(name);
-      const directory = path.posix.dirname(previewFile);
-      if (directory !== "." && !name.startsWith(`${directory}/`))
-        throw new Error("preview directory denied");
       const scene = previewScene,
         token = previewToken;
       if (!scene || scene.root !== workspace.active.root)

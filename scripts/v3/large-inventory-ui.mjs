@@ -163,6 +163,13 @@ try {
     }),
     /契約|古い版/,
   );
+  await fs.writeFile(
+    path.join(root, htmlPath),
+    '<link rel="stylesheet" href="missing.css"><h1>incomplete mock</h1>',
+  );
+  await call("files.select", { path: htmlPath });
+  await assert.rejects(call("preview.capture"), /安定|資産|ENOENT/);
+  await fs.writeFile(path.join(root, htmlPath), html);
   await call("files.refresh");
   const id = (await state()).inventory.id;
   await app.mainEvaluate(
@@ -199,6 +206,7 @@ try {
         unrelatedLargeChangesAllowed: true,
         changedCssRejected: true,
         changedContractRejected: true,
+        failedResourceCaptureRejected: true,
         cancellationAndStaleCursorRejected: true,
         systemClipboardNotModified: true,
         modelSent: false,

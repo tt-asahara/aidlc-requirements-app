@@ -88,12 +88,23 @@ export class PreviewScene {
       );
   }
   async read(name) {
-    safeName(name);
-    if (this.directory !== "." && !name.startsWith(`${this.directory}/`))
-      throw new Error("preview directory denied");
-    if (this.stale)
-      throw new Error("プレビューの原本が変わりました。再度選択してください");
-    if (this.pending >= 32) throw new Error("プレビューの同時読取上限です");
+    try {
+      safeName(name);
+      if (this.directory !== "." && !name.startsWith(`${this.directory}/`))
+        throw new Error("preview directory denied");
+      if (this.stale)
+        throw new Error(
+          this.failure ??
+            "プレビューの原本が変わりました。再度選択してください",
+        );
+      if (this.pending >= 32) throw new Error("プレビューの同時読取上限です");
+    } catch (e) {
+      // Failed resources must not disappear from the capture proof merely
+      // because validation refused them before acquiring a read slot.
+      this.stale = true;
+      this.failure = e.message;
+      throw e;
+    }
     this.pending++;
     if (this.active >= 4)
       await new Promise((resolve) => this.waiters.push(resolve));
