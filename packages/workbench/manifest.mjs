@@ -145,12 +145,29 @@ export async function readSafe(root, name) {
     const before = await handle.stat();
     if (!before.isFile() || before.nlink !== 1 || before.size > 2 * 1024 * 1024)
       throw new Error("通常ファイル/容量を確認してください");
-    const bytes = await handle.readFile();
+    // Bound allocation and actual I/O even if another process grows the file
+    // after the initial stat. One extra byte detects a concurrent append.
+    const buffer = Buffer.alloc(before.size + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const result = await handle.read(
+        buffer,
+        length,
+        buffer.length - length,
+        length,
+      );
+      if (!result.bytesRead) break;
+      length += result.bytesRead;
+    }
+    const bytes = buffer.subarray(0, length);
     const after = await handle.stat();
     if (
       before.ino !== after.ino ||
       before.mtimeMs !== after.mtimeMs ||
-      before.size !== after.size
+      before.size !== after.size ||
+      before.ctimeMs !== after.ctimeMs ||
+      after.nlink !== 1 ||
+      length !== before.size
     )
       throw new Error("書込中です");
     const final = await fs.lstat(cursor);
