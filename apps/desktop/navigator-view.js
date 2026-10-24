@@ -44,7 +44,10 @@ export function navigatorView(current, call, select) {
           : "artifact-choice";
       b.append(
         el("span", label + (f.oversized ? "（本文2MiB超）" : "")),
-        el("small", `${artifactContext(f.path)} · ${f.path}`),
+        el(
+          "small",
+          `${artifactContext(f.path)} · ${f.path.split("/").slice(-2).join("/")}`,
+        ),
       );
       b.onclick = () => void select(f.path).catch(() => {});
       box.append(b);

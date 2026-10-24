@@ -530,3 +530,14 @@ body [hidden],
   background: transparent;
   text-align: left;
 }
+#screenList {
+  max-height: 28vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+#requirementsList,
+#designList {
+  max-height: 28vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+}

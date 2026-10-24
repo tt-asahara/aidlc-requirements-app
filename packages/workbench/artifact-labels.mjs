@@ -84,10 +84,27 @@ export function artifactLabel(name, mockups = null) {
   return labels[base?.toLowerCase()] ?? readable(base);
 }
 export function artifactContext(name) {
-  const intent = name.match(/^aidlc\/spaces\/[^/]+\/intents\/([^/]+)\//)?.[1];
-  return intent
-    ? `ラウンド ${intent}`
-    : name.split("/").slice(0, -1).join("/") || "案件直下";
+  const match = name.match(/^aidlc\/spaces\/[^/]+\/intents\/([^/]+)\/(.*)$/);
+  if (match) {
+    const module = match[2]
+      .split("/")
+      .slice(0, -1)
+      .filter(
+        (p) =>
+          ![
+            "assets",
+            "ideation",
+            "inception",
+            "rough-mockups",
+            "refined-mockups",
+          ].includes(p),
+      )
+      .join("/");
+    return `ラウンド ${match[1]}${module ? ` / ${module}` : ""}`;
+  }
+  if (name.includes("design-document/"))
+    return `統合設計書 / ${name.split("design-document/")[1].split("/").slice(0, -1).join("/") || "概要"}`;
+  return name.split("/").slice(0, -1).join("/") || "案件直下";
 }
 export function documentTarget(current, href) {
   if (typeof href === "string") {
