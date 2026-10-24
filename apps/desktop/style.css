@@ -440,3 +440,93 @@ body [hidden],
 #localCreateHint {
   color: #526257;
 }
+.navigator-filters {
+  display: grid;
+  gap: 8px;
+}
+#artifacts .navigator-filters label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+#artifacts .navigator-filters input,
+#artifacts .navigator-filters select {
+  width: 100%;
+  min-width: 0;
+}
+.artifact-choice {
+  display: grid;
+  text-align: left;
+  width: 100%;
+  margin: 5px 0;
+  overflow-wrap: anywhere;
+  border-color: transparent;
+  background: transparent;
+  gap: 4px;
+}
+.artifact-choice small {
+  color: #60745f;
+  font-size: 10px;
+  font-weight: normal;
+  line-height: 1.5;
+}
+.artifact-choice.active {
+  background: #e0ebda;
+  border-color: #b5c9ac;
+}
+#artifacts h3 {
+  font-size: 16px;
+  margin: 24px 0 12px;
+}
+#artifacts h4 {
+  font-size: 13px;
+  margin: 16px 0 8px;
+}
+#document {
+  font-size: 15px;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+#document h1 {
+  font-size: 28px;
+}
+#document h2 {
+  font-size: 23px;
+  margin: 28px 0 12px;
+}
+#document h3 {
+  font-size: 19px;
+  margin: 24px 0 8px;
+}
+#document pre {
+  white-space: pre;
+  overflow: auto;
+  background: #eef2eb;
+  padding: 12px;
+  border-radius: 6px;
+}
+#document table {
+  border-collapse: collapse;
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+}
+#document th,
+#document td {
+  border: 1px solid #ccd6c8;
+  padding: 8px 12px;
+}
+#document blockquote {
+  border-left: 3px solid #a5baa0;
+  margin-left: 0;
+  padding-left: 16px;
+  color: #53664f;
+}
+#document .document-link {
+  padding: 0;
+  border: 0;
+  color: #205a38;
+  text-decoration: underline;
+  background: transparent;
+  text-align: left;
+}

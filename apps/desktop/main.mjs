@@ -17,6 +17,10 @@ import {
   WebContentsView,
 } from "electron";
 import {
+  activeDocumentSpace,
+  DocumentCatalog,
+} from "../../packages/workbench/document-catalog.mjs";
+import {
   LocalInventory,
   loadContent,
   metadataSafe,
@@ -98,6 +102,8 @@ let workspace = new LocalWorkspace(config.store),
   viewIntent = null,
   stable = { files: [] },
   inventory = null,
+  documentCatalog = null,
+  documentError = null,
   inventoryReading = false,
   refreshBusy = null,
   localDirty = false,
@@ -167,6 +173,11 @@ function state() {
       : null,
     selected,
     documentText,
+    documents:
+      documentCatalog && documentCatalog.root === workspace.active?.root
+        ? documentCatalog.state()
+        : null,
+    documentError,
     workflow,
     viewIntent,
     terminalRunning,
@@ -310,6 +321,8 @@ async function refreshInside({ reset = false } = {}) {
   const root = workspace.active?.root;
   if (!root) {
     await inventory?.close();
+    await documentCatalog?.close();
+    documentCatalog = null;
     inventory = null;
     stable = { files: [] };
     return;
@@ -318,7 +331,7 @@ async function refreshInside({ reset = false } = {}) {
     if (reset || !inventory || inventory.root !== root) {
       await inventory?.close();
       if (workspace.active?.root !== root) return;
-      inventory = new LocalInventory(root);
+      inventory = new LocalInventory(root, { kind: "navigator" });
       await inventoryPage();
     }
     if (workspace.active?.root !== root) return;
@@ -356,6 +369,26 @@ async function refreshInside({ reset = false } = {}) {
     }
     if (workspace.active?.root !== root) return;
     workflow = projection;
+    try {
+      const space = await activeDocumentSpace(root);
+      if (workspace.active?.root !== root) return;
+      if (
+        reset ||
+        documentCatalog?.root !== root ||
+        documentCatalog?.space !== space
+      ) {
+        await documentCatalog?.close();
+        if (workspace.active?.root !== root) return;
+        const next = new DocumentCatalog(root, space);
+        documentCatalog = next;
+        await next.initialize();
+      }
+      documentError = null;
+    } catch (e) {
+      if (workspace.active?.root === root)
+        documentError = `文書一覧を読めません: ${e.message}`;
+    }
+    if (workspace.active?.root !== root) return;
     appliedHarness = harness.current;
     lastBackup = harness.lastBackup;
     if (selected?.path) {
@@ -390,6 +423,9 @@ async function refreshInside({ reset = false } = {}) {
 function resetLocalProjection() {
   void inventory?.close();
   inventory = null;
+  void documentCatalog?.close();
+  documentCatalog = null;
+  documentError = null;
   inventoryReading = false;
   stable = { files: [] };
   previewScene = null;
@@ -411,6 +447,7 @@ function observe() {
     watcher = watch(watchedRoot, { recursive: true }, () => {
       if (workspace.active?.root !== watchedRoot) return;
       inventory?.markDirty();
+      documentCatalog?.markDirty();
       localDirty = true;
       fileEventGeneration++;
       clearTimeout(watchTimer);
@@ -439,12 +476,23 @@ async function showFile(name) {
     workflow.progress?.intents.some((i) => i.dirName === fileIntent)
   ) {
     viewIntent = fileIntent;
-    workflow.mockups = await readMockups(root, fileIntent);
+    try {
+      workflow.mockups = await readMockups(root, fileIntent);
+    } catch (e) {
+      workflow = {
+        ...workflow,
+        mockups: null,
+        message: `契約を確認できません。HTMLは安全な読取境界で閲覧できます: ${e.message}`,
+      };
+    }
   }
   if (name.endsWith(".html")) {
     const scene = await new PreviewScene(root, name).initialize();
     if (workspace.active?.root !== root) throw new Error("案件が変わりました");
-    selected = { ...scene.resources.get(name) };
+    selected = {
+      ...scene.resources.get(name),
+      previewWarning: scene.bindingFailure ?? null,
+    };
     documentText = "";
     previewReady = false;
     previewScene = scene;
@@ -989,6 +1037,22 @@ async function initialize() {
       return state();
     },
     "files.select": async (b) => showFile(b.path),
+    "documents.page": async (b) => {
+      const current = documentCatalog;
+      if (!current || current.root !== workspace.active?.root)
+        throw new Error("文書一覧を再読取してください");
+      const work = current.page(b.group, b.id, b.direction);
+      push();
+      await work;
+      return state();
+    },
+    "documents.cancel": async (b) => {
+      const current = documentCatalog;
+      if (!current || current.root !== workspace.active?.root)
+        throw new Error("文書一覧の対象が変わりました");
+      await current.cancel(b.group, b.id);
+      return state();
+    },
     "preview.bounds": async (b) => {
       const [w, h] = window.getContentSize();
       const zoom = window.webContents.getZoomFactor();
@@ -1567,6 +1631,7 @@ async function initialize() {
         "terminal.stop",
         "share.cancelLogin",
         "files.cancel",
+        "documents.cancel",
         "preview.bounds",
       ].includes(action);
       const rootBefore = workspace.active?.root;
@@ -1640,6 +1705,7 @@ async function initialize() {
       clearInterval(fallback);
       watcher?.close();
       await inventory?.close();
+      await documentCatalog?.close();
       clearTimeout(watchTimer);
       try {
         await stopTerminal();

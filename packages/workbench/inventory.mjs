@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { artifactKind } from "./artifact-labels.mjs";
 import { hash, readSafe, safeName, validateManifest } from "./manifest.mjs";
 
 const excluded = new Set([
@@ -65,6 +66,7 @@ export class LocalInventory {
       maxDepth = 32,
       cachePages = 8,
       kind = "artifacts",
+      scope = "",
     } = {},
   ) {
     if (
@@ -80,6 +82,8 @@ export class LocalInventory {
     this.maxDepth = Math.min(32, maxDepth);
     this.cachePages = Math.min(8, cachePages);
     this.kind = kind;
+    if (scope) safeName(`${scope}/README.md`);
+    this.scope = scope;
     this.frames = [];
     this.pages = [];
     this.position = -1;
@@ -191,7 +195,14 @@ export class LocalInventory {
         files: this.pages[this.position]?.files ?? [],
         inventory: this.summary(),
       };
-    if (!this.frames.length) await this.openDirectory("");
+    if (!this.frames.length) {
+      try {
+        await this.openDirectory(this.scope);
+      } catch (e) {
+        if (this.scope && e.code === "ENOENT") this.done = true;
+        else throw e;
+      }
+    }
     const files = [];
     let work = 0;
     try {
@@ -254,6 +265,14 @@ export class LocalInventory {
         } catch {
           continue;
         }
+        const kind = artifactKind(name);
+        if (
+          (this.kind === "navigator" &&
+            !["screen", "document"].includes(kind)) ||
+          (this.kind === "design" && kind !== "design") ||
+          (this.kind === "requirements" && kind !== "requirements")
+        )
+          continue;
         try {
           const meta = await metadataSafe(this.root, name);
           this.eligible++;

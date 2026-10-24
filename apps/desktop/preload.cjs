@@ -9,6 +9,8 @@ const actions = new Set([
   "files.refresh",
   "files.page",
   "files.cancel",
+  "documents.page",
+  "documents.cancel",
   "workflow.view",
   "files.select",
   "preview.bounds",

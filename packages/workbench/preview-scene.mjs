@@ -50,8 +50,14 @@ export class PreviewScene {
   }
   async initialize() {
     await this.checkRoot();
-    this.bindings = await this.readBindings();
-    this.bindingMetadata = this.observedBindingMetadata;
+    try {
+      this.bindings = await this.readBindings();
+      this.bindingMetadata = this.observedBindingMetadata;
+    } catch (e) {
+      // Contract defects must not make an otherwise safe HTML unreadable.
+      // Capture/handoff remain disabled until binding can be verified.
+      this.bindingFailure = e.message;
+    }
     await this.read(this.html);
     return this;
   }
@@ -177,6 +183,10 @@ export class PreviewScene {
     return false;
   }
   async prove(expected = null) {
+    if (this.bindingFailure)
+      throw new Error(
+        `契約情報を検証できないため撮影できません。原本を直して再度選択してください: ${this.bindingFailure}`,
+      );
     if (this.stale && this.failure)
       throw new Error(`モック資産を確認できません: ${this.failure}`);
     if (this.stale || this.pending)

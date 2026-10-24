@@ -1,6 +1,9 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { Terminal } from "@xterm/xterm";
+import { artifactLabel } from "../../packages/workbench/artifact-labels.mjs";
+import { documentView } from "./document-view.js";
+import { navigatorView } from "./navigator-view.js";
 
 const api = window.workbench,
   $ = (id) => document.getElementById(id);
@@ -9,11 +12,15 @@ let state = {},
   selection = null,
   start = null,
   shotImage = null,
-  filesKey = "",
   renderedRoot = null,
   selectionRequest = 0,
   securityReviewKey = "",
   creatingLocal = false;
+const setDocument = documentView(
+  $("document"),
+  (name) => void select(name).catch(() => {}),
+);
+const renderArtifacts = navigatorView(() => state, call, select);
 const terminal = new Terminal({
   fontFamily: "Menlo,monospace",
   fontSize: 13,
@@ -134,10 +141,12 @@ function render(s) {
   renderCommentDraft(s);
   if (renderedRoot !== s.active?.root) {
     renderedRoot = s.active?.root;
+    $("screenStageFilter").value = "all";
+    $("screenSearch").value = "";
     $("annotation").hidden = true;
     $("previewArea").hidden = false;
     $("fileTitle").textContent = "モックを見ながら、具体化する";
-    $("document").textContent = "";
+    setDocument("");
     $("document").hidden = true;
     $("empty").hidden = !!s.selected;
   }
@@ -209,65 +218,12 @@ function render(s) {
       ? "回復用ローカル端末"
       : "起動中"
     : "未起動/終了";
-  $("capture").disabled = !s.selected?.path?.endsWith(".html");
-  const groups = {
-    モック原本: [],
-    "要件・正式AC": [],
-    統合文書: [],
-    関連資料: [],
-  };
-  const listing = s.inventory;
-  $("inventoryStatus").textContent = listing
-    ? `${listing.page || 1}ページ · ${listing.scanned}項目を調査${listing.cancelled ? " · 読取を中止（再読取で先頭から再開）" : listing.complete ? " · 列挙済み" : " · 一覧は途中です。次のページで続けられます"}${listing.dirty ? " · 更新あり：再読取で一覧を更新" : ""}${listing.skipped ? ` · 対象外/変更中 ${listing.skipped}件` : ""}${listing.failure ? ` · ${listing.failure}` : ""}。本文は開く時に検証します。`
-    : "一覧を準備しています";
-  $("previousFiles").disabled =
-    !listing?.hasPrevious || listing.reading || listing.cancelled;
-  $("nextFiles").disabled = !listing?.hasNext || listing.reading;
-  $("cancelFiles").disabled = !listing?.hasNext || listing.cancelled;
-  for (const f of s.files ?? []) {
-    if (!/\.(md|html|txt)$/i.test(f.path)) continue;
-    const intent = f.path.match(
-      /^aidlc\/spaces\/[^/]+\/intents\/([^/]+)\//,
-    )?.[1];
-    if (intent && s.viewIntent && intent !== s.viewIntent) continue;
-    const group = f.path.endsWith(".html")
-      ? "モック原本"
-      : f.path.includes("design-document/")
-        ? "統合文書"
-        : /(requirements|stories|acceptance|interaction-spec)/i.test(f.path)
-          ? "要件・正式AC"
-          : "関連資料";
-    groups[group].push(f);
-  }
-  const nextFilesKey = JSON.stringify([s.files, s.selected, s.viewIntent]);
-  if (nextFilesKey !== filesKey) {
-    filesKey = nextFilesKey;
-    $("fileList").replaceChildren();
-    for (const [name, files] of Object.entries(groups)) {
-      if (!files.length) continue;
-      const box = el("section");
-      box.className = "file-group";
-      box.append(el("h3", name));
-      for (const f of files) {
-        const b = el("button", f.path.split("/").slice(-2).join("/"));
-        if (f.oversized) b.textContent += "（本文2MiB超）";
-        b.title = f.path;
-        b.className = f.path === s.selected?.path ? "active" : "";
-        b.onclick = () => void select(f.path).catch(() => {});
-        box.append(b);
-      }
-      $("fileList").append(box);
-    }
-    if (!(s.files ?? []).length)
-      $("fileList").append(
-        el(
-          "p",
-          listing && !listing.complete
-            ? "このページに表示対象はありません。次のページへ進むか、再読取で先頭へ戻れます。"
-            : "まだ成果物がありません。CLIで作成した実ファイルを表示します。",
-        ),
-      );
-  }
+  $("capture").disabled =
+    !s.selected?.path?.endsWith(".html") || !!s.selected?.previewWarning;
+  $("previewHint").textContent = s.selected?.previewWarning
+    ? `契約情報を検証できないため閲覧のみです。撮影・下書きの受渡しはできません: ${s.selected.previewWarning}`
+    : "右の画面や文書を選択してください。HTMLは端末から隔離して表示します。";
+  renderArtifacts(s);
   renderWorkflow();
   $("settingsInfo").textContent =
     `公式CLI: ${s.cli?.path ?? s.config?.cli}\n版: ${s.cli?.version ?? "未確認"}\nTeamログイン: 本人がCLI内で確認\n保存先: ${s.config?.store}\nハーネス取得元: ${s.config?.harnessSource}\n取得済みcommit: ${s.config?.downloaded?.revision ?? "未取得"}\n準備済み配布hash: ${s.harnessBundle?.id ?? s.config?.prepared ?? "未選択"}\nこの案件の適用版: ${s.appliedHarness?.bundle ?? "未適用"}\n復元: ${s.lastBackup ? (s.lastBackup.interrupted ? "中断された適用あり・復元可能" : "直前へ復元可能") : "バックアップなし"}`;
@@ -342,15 +298,17 @@ function render(s) {
     ),
   );
   if (!s.selected) {
-    $("document").textContent = "";
+    setDocument("");
     $("annotation").hidden = true;
     $("previewArea").hidden = false;
     $("empty").hidden = false;
   }
   if (s.selected?.path && /\.(md|txt)$/.test(s.selected.path))
-    $("document").textContent = s.documentText ?? "";
-  $("fileTitle").textContent =
-    s.selected?.path ?? "モックを見ながら、具体化する";
+    setDocument(s.selected.path, s.documentText ?? "");
+  $("fileTitle").textContent = s.selected?.path
+    ? artifactLabel(s.selected.path, s.workflow?.mockups)
+    : "モックを見ながら、具体化する";
+  $("fileTitle").title = s.selected?.path ?? "";
   if (!paneInitialized) {
     paneInitialized = true;
     if (s.config?.panes) paneWidths = s.config.panes;
@@ -455,12 +413,13 @@ async function select(name) {
   const request = ++selectionRequest;
   const r = await call("files.select", { path: name });
   if (request !== selectionRequest) return;
-  $("fileTitle").textContent = name;
+  $("fileTitle").textContent = artifactLabel(name, state.workflow?.mockups);
+  $("fileTitle").title = name;
   $("empty").hidden = true;
   $("annotation").hidden = true;
   $("previewArea").hidden = false;
   $("document").hidden = r.type === "html";
-  $("document").textContent = r.text ?? "";
+  setDocument(r.type === "html" ? "" : name, r.text ?? "");
   layout();
 }
 async function createLocal() {
