@@ -18,12 +18,20 @@
     "test": "bun test",
     "build": "bun run --cwd apps/web build",
     "e2e": "playwright test",
-    "e2e:docker": "playwright test -c playwright.docker.config.ts"
+    "e2e:docker": "playwright test -c playwright.docker.config.ts",
+    "v3:build": "bun run --cwd apps/desktop build",
+    "v3:start": "bun run --cwd apps/desktop start",
+    "v3:test": "node --test apps/collaboration/service.nodecheck.mjs packages/workbench/local.nodecheck.mjs packages/workbench/releases.nodecheck.mjs packages/workbench/oidc.nodecheck.mjs packages/workbench/lease-heartbeat.nodecheck.mjs packages/workbench/auth-rate-limit.nodecheck.mjs packages/workbench/local-index.nodecheck.mjs packages/workbench/project-dialog.nodecheck.mjs packages/workbench/inventory.nodecheck.mjs packages/workbench/preview-scene.nodecheck.mjs packages/workbench/artifact-navigation.nodecheck.mjs packages/workbench/preview-selection.nodecheck.mjs",
+    "v3:share": "node apps/collaboration/main.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@playwright/test": "1.64.1",
     "@types/bun": "1.3.14",
+    "node-gyp": "11.5.0",
     "typescript": "7.0.2"
+  },
+  "overrides": {
+    "@types/node": "24.19.2"
   }
 }

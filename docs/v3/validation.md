@@ -1,0 +1,112 @@
+# V3 validation — 2026-10-23
+
+Validation uses isolated synthetic projects and private application data. The user's open workbench is retained. No automated model prompts, login-token access, AWS changes, or public deployment.
+
+| Scope | Result | Evidence / practical limit |
+|---|---|---|
+| Existing V2 | 195 tests, 875 assertions, 22 browser E2E; lint, typecheck and build pass | Real model is not part of regression. Web bundle retains the existing size advisory. |
+| V3 core | 11 Node tests pass | Actual HTTP service with 20 authenticated clients, project memberships, one editor, renewal/expiry/epoch, CAS, full-manifest validation, comments and immutable restore. Local file/harness isolation and interrupted recovery. |
+| Official Claude TUI | Pass | User-installed 2.1.309. Actual interactive folder-confirmation screen at 53 and 89 columns, no input/permission acceptance/model prompts. xterm/PTY initial geometry agrees; own PID exits after stop. |
+| Terminal rendering | Pass | Explicit synthetic PTY fixture covers Japanese/full-width characters, split UTF-8 bytes, ANSI cursor/color, alternate screen, SIGWINCH, independent right resize and saved width after restart. This fixture is not model output. |
+| Native preview / annotation | Pass | Actual dynamic HTML interaction, native PNG capture, image hash/file reference and full editable draft, clipboard text plus PNG confirmed after awaited Electron45 write. Source changes reject stale copy without losing text. |
+| Preview boundary | Pass | No Node/preload/terminal bridge, file URL or external network. Selected-directory asset allowlist, different source storage origin, another HTML cannot silently replace the captured source. Narrow region navigation works. |
+| Two Electron clients | Pass | Same immutable head, lease conflict, revoke, stale publication rejected, old local output retained outside current shared snapshot, publish/comment/history restore. |
+| Harness UI | Pass | Import/diff/explicit security check/apply/settings preservation/restart/rollback. Native folder-picker return is stubbed in the test-only entry; production IPC cannot inject a folder path. |
+| Source fetch | Pass | Fixed upstream Git source resolves `61da68f29914d50c0f962853d04b03df9fa3af9c`; exact fetch SHA verified, no fetched scripts executed. Fetch and prepared distribution/apply stay separate. |
+| Actual local prepared harness | Pass | 353 files / 172 security-sensitive changes, content manifest `be5bd8c6fb6f41464dad343f4d77077a59ca417d4e119cd8c22094d77bf7762e`. Applied only to empty synthetic project, bundled Bun runs read-only/offline `aidlc --version`: `aidlc 2.11.0 (runtime 2.11.0)`, then rollback. Empty isolated HOME, no official CLI/model. Prepared local bytes are not falsely attributed to the fetched source SHA. |
+| Workflow projection | Pass | Existing V2 reader reused; execution round/stage separated from viewed round, every AC/mapping retained, same HTML multiple states do not imply replay, legacy schema distinct, active-space/active-intent preserved in shared manifest. |
+| macOS arm64 package | Pass | Electron45 + native PTY + Bun1.3.14. Local ad-hoc signature verified, native app starts, official CLI version, real HTML/capture, same project restored after restart. No external Node/Python/Bun runtime. |
+
+## Reproducible commands
+
+```sh
+bun run lint
+bun run typecheck
+bun test
+bun run build
+bun run e2e
+bun run v3:test
+bun run v3:build
+node scripts/v3/desktop-integration.mjs
+node scripts/v3/terminal-layout.mjs
+node scripts/v3/terminal-ansi.mjs
+node scripts/v3/two-clients.mjs
+node scripts/v3/harness-ui.mjs
+node scripts/v3/workflow-ui.mjs
+node scripts/v3/package-mac.mjs
+node scripts/v3/packaged-smoke.mjs
+```
+
+The explicit optional `official-harness-check.mjs <local prepared distribution>` checks only synthetic installation/read-only version/rollback. It is not run by fetch or normal startup.
+
+## Remaining production work / non-claims
+
+- HTTPS/native-PKCE OIDC/MFA and recipient-bound project invitation are implemented in server and UI. Real organization IdP/MFA, TLS deployment and endpoint/network publication remain unconfigured/unverified. Local invitation auth is a separate verification adapter, not production MFA. See shared-server.md.
+- Developer ID signing, notarization, Windows/Linux distribution and public release review are not done. Package is a local macOS arm64 build; third-party notices are included.
+- Published release list/download/digest+tag-commit pin/diff/security confirmation/apply/rollback is implemented and verified through actual Electron UI. Only a preview release is currently published and it requires explicit selection. A fetched develop commit is not automatically built or executed. Root `.mcp.json` and external/cloud MCP settings are deliberately outside that import. Git is needed for source fetching.
+- The app neither reads Claude login tokens nor verifies subscription/billing identity. The user operates official CLI auth. No automated Team model/image-input or long AI-DLC workflow verification was performed; prior V2 model runs are not V3 evidence.
+- Existing user-controlled/external editors cannot be made fully atomic with capture or publication. Stable reads/hashes reject observed races; server publication validates the complete frozen manifest and atomically switches its reference.
+- Agent-triggered V3 model calls and Bedrock usage: 0. Human CLI usage is separate, and no cost is invented for it. Existing V2 ledger/unknown reservation is untouched.
+- The PR workflow runs V3 service/data checks and renderer/reader build alongside existing regression. Native macOS UI/CLI acceptance is separate local evidence; no main merge is part of this work.
+
+
+## Additional acceptance and machine-readable records
+
+- Actual packaged `Claude Codeを起動` produces the interactive folder-confirmation TUI, not just version text. No answer, login, permission acceptance or model prompt was inserted.
+- Starting without a project opens an explicit create/select dialog. The agent does not silently choose a directory.
+- Settings release flow verified with official published preview archive SHA256 `ce7f56ff3d6adc8f8b80ff834c3bf95faef188b8e78bc7be38e78e49aa0b23e2`, resolved tag commit `6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a`, prepared content hash `e3285796ac083a86354c51aaf1627a231d28e51fa077bc4b468bbb4c634eba98`. Download alone changes no project; stale review-plan ID rejects apply; explicit security confirmation, apply and rollback pass. Fetched code execution and new credentials: 0.
+- Test records are emitted under `../evidence/v3/`: `twenty-clients-current.json`, `two-clients-current.json`, `desktop-tui-current.json`, `release-ui-current.json`, `packaged-acceptance.json`, plus timestamped historical JSON. These contain synthetic results and no invites/session tokens. Repeatable record creation is in `scripts/v3/record.mjs`.
+- Public GitHub API returned a verified rate-limit 403; the client uses the same public repository's feed/checksum plus anonymous Git ref resolution, without tokens or account changes. SHA/pin verification remains mandatory.
+
+- Disconnect acceptance now also stops the synthetic hosting process, verifies the other client's running official CLI is not falsely marked stopped, quarantines late local output, and releases only the disconnecting session's lease. Service restart preserves the head while invalidating old memory-only sessions/lease epochs.
+- Scheme/sandbox/profile initialization is synchronous before ESM loading; packaged cold/restart acceptance catches the Electron ready-order race.
+
+
+Latest executable acceptance is `ae0ce69004e9`: the packaged startup-button/create-project path reaches the real official Claude TUI, resize changes 53→89 columns, and stop confirms the owned PID has disappeared. `packaged-tui-current.json` stores this actual runtime build commit and exact application path; `packaged-acceptance.json` matches the same revision and verifies restart. Superseded `c230214` packages failed the pre-ready initialization check and are not accepted. Test-only evidence refinements can have a later repository commit without changing this executable's source.
+
+
+## Independent review corrections
+
+- Management JSON uses same-directory temporary files, fsync and rename. A truncated current receipt no longer prevents artifact projection; validated backup journals remain available for explicit recovery. Staged bytes are removed only when journal path/hash ownership matches. Unknown stage contents and modified installed files remain untouched.
+- Publication rejects file/directory prefix conflicts after normalization/case folding before updating the shared head.
+- Comment drafts retain project and version through project switches and head updates. An old-version comment needs explicit confirmation and cannot be silently attached to another project/head. Electron UI regression covers the switch/update/send path.
+
+## HTTPS/OIDC sharing and review acceptance
+
+- Server and application UI implement explicit HTTPS endpoints, external-browser native PKCE, one-use server nonce, RS256 issuer/audience/time validation, required MFA amr/acr, verified-recipient invitation, stable subject membership and memory-only sessions. Loopback invitation remains a separately labeled local test adapter.
+- The V3 suite now has 17 tests, including 20 authenticated certificate-verified HTTPS clients with one lease winner, CAS, shared manifests, comments and history restore. Invalid signature/issuer/audience/nonce/expiry/MFA/recipient and TLS host mismatch/redirect are refused.
+- `https-sharing-ui.mjs --packaged` launches two independent copies of the production package entry. Actual buttons cover endpoint confirmation, OIDC login, invitation/join, project selection, lease conflict, file publication/native mock preview, versioned comment, history restore, disconnect and login cancel. Only the OS browser launcher is replaced by an isolated test inspector; actual HTTPS, PKCE, callback and signed synthetic-issuer verification remain active. This is not actual organization MFA or a two-physical-PC acceptance.
+- `review-regressions-ui.mjs --packaged` covers project/version-pinned drafts and explicit old-version comments, plus artifact projection and the settings rollback button with a truncated current management JSON. Core recovery injects a real failure between stage write and destination rename, verifies unknown staged bytes remain intact, and confirms retry succeeds after rollback.
+- Machine-readable records include `appCommit`, dirty-source status/diff hash, and the actual packaged runtime revision when applicable. Before/after test runs are preserved; a result from dirty source is not substituted for final clean-commit acceptance.
+- Real IdP/MFA registration, a valid public certificate, an approved deployed endpoint and external network access remain operator setup/acceptance. The missing remote client/server path has been implemented; these remaining deployment tasks are not described as missing application functionality. See `shared-server.md` for exact prerequisites.
+
+## Follow-up concurrency / authentication review
+
+- Lease renewal runs outside the serialized UI/filesystem queue. Each request freezes connection, project, private edit root and epoch; late success/failure is ignored after any of these changes. Renewal only updates lease timing, not the shared head. Publication rechecks the edit context after stable-file reads, and restore checks it before enabling a new local edit root.
+- The V3 suite now has 17 tests. Actual HTTP with an unresolved queue verifies renewals across the original expiry and server revocation. Delayed success/failure tests cannot revive a different connection/root/epoch.
+- `lease-heartbeat-ui.mjs --packaged` defers the test-only picker while using a 9-second synthetic-server lease, holds it longer than the lease, verifies another editor is still refused, then revokes the lease from another app while the picker remains pending. It verifies immediate quarantine, rejected publication and preserved late output. This scales the production 60-second lease to a short acceptance test; it does not claim a real OS picker was operated for 60 seconds.
+- Invalid login requests are limited by actual socket source; `Forwarded`/`X-Forwarded-*` are not trusted. A valid one-use, source-bound challenge or local invite does not spend this failure bucket. Separate per-source challenge issuance/outstanding limits and bounded global storage/verification concurrency protect resources. Tests send 36 invalid requests with spoofed client-IP headers, then successfully consume a valid same-source login and verify challenge storage limits do not invalidate already issued challenges. These are application safeguards, not a claim to prevent every network-level denial of service.
+
+## Local project creation and artifact size regression
+
+`node scripts/v3/local-project-ui.mjs --baseline` reproduced two distinct old-package behaviours in an isolated profile: first-run and existing-state create buttons created different directories but displayed the same empty-project label; a synthetic project above 20MiB returned the generic byte/hash/size error and no artifacts. Existing project files survived both creations.
+
+The corrected packaged check (`node scripts/v3/local-project-ui.mjs`) verifies visible completion and save path, rapid double-click admission, creation exception feedback, CLI-running rejection without stopping that CLI, >20MiB local artifact display/native capture, and strict shared publication rejection with unchanged head. Official CLI is started and stopped only in that synthetic profile, with no input or model request. The former 64MiB read-only index budget described by the original records is superseded by the metadata inventory below. Records: `local-project-baseline-current.json`, `local-project-ui-current.json`, `local-project-error-ui-current.json`.
+
+## Paginated local inventory
+
+`compact-preview-ui.mjs --baseline` records the old packaged layout in an isolated fixture; `compact-preview-ui.mjs` / `--packaged` compare the same viewport and exercise the sole primary stage control, synchronized preview, explicit current-HTML mapping selection, preserved drafts/documents, collapsed warnings, missing/unverifiable contracts, stale-root clear rejection, rapid stage changes and keyboard expansion at 960px width. The 1540×968 baseline preview was 434px high; the compact layout measured 594px (about 160px gain). This is a geometry/real-Electron regression, not a model run. Both supplied PNGs were materialized and visually inspected on the Mac; their bytes and Library identities remain in task evidence, outside Git. Records: `compact-preview-baseline-current.json`, `compact-preview-ui-current.json`; pure selection regressions: `preview-selection.nodecheck.mjs`.
+
+The right pane now separates screen images (rough/refined/other, searchable filename or contract screen label with visible path/round context) from requirements/design documents. `artifact-navigation-ui.mjs` tests direct HTML selection despite broken contracts, source/internal-file exclusion without deletion, independent active-space `/design-document/` enumeration and paging, unchanged document visibility during screen filtering, and Markdown headings/tables/Japanese relative links. Raw HTML/scripts, external images and external links are not executed/fetched. Large Markdown uses bounded formatting plus a full plain-source view. The overview README remains pinned across design pages. An unreadable/unverifiable contract permits safe HTML viewing but refuses capture/handoff; it does not override gates. Records: `artifact-navigation-ui-current.json`; Node regressions: `artifact-navigation.nodecheck.mjs`.
+
+`node scripts/v3/large-inventory-ui.mjs` (and `--packaged`) exercises the actual Electron UI in an isolated synthetic workspace. The fixture contains 2105 history files totaling 137,953,280 logical bytes, plus selected documents and mock assets. It intercepts body-open attempts for history files: pagination must open zero history bodies, keep each page at most 200 items, and remain usable past 2000 files. It also verifies partial/cancelled enumeration, stale cursor rejection, oversized-file feedback, and native capture with real CSS/PNG assets. Clipboard operations are replaced only in the isolated test process, so the user's clipboard is preserved.
+
+`inventory.nodecheck.mjs` verifies bounded metadata paging/cache, zero body reads, lazy private-content checks, traversal/symlink/hardlink rejection, root replacement, and bounded actual reads if a file grows after stat. `preview-scene.nodecheck.mjs` verifies served-resource and contract/pointer proofs, new/changed assets or contracts, root replacement, bounded concurrency and unrelated large-file independence. Shared manifest/server limits are unchanged. The server mockup regression verifies that metadata-only projection skips asset-body verification while the default API still detects mismatched actual bytes. Metadata revisions are refresh hints, never content-hash authority.
+
+The inventory is a live bounded enumeration, not a persisted search index or atomic project snapshot. Previous-page navigation retains eight pages; refresh returns to the beginning. Individual content reads remain limited to 2MiB, and native preview scenes to 128 served resources / 16MiB total. These localized bounds leave the rest of the project browsable. External edits are not fully atomic with screenshot capture; every handoff rechecks actual resource/contract bytes and rejects observed changes. No user project is moved, deleted, migrated or rewritten by this repair. Running user app/session switching requires a separate agreed step. Record: `large-inventory-ui-current.json`.
+
+## Project navigation UX
+
+`project-dialog.nodecheck.mjs` verifies the selected root takes priority, missing/deleted/non-directory candidates fall back without filesystem writes, inaccessible candidates fall back, and relative paths cannot inject a temporary CLI cwd. Permission denial is injected at the filesystem adapter for a deterministic cross-platform check.
+
+`node scripts/v3/project-navigation-ui.mjs --packaged` starts an isolated packaged instance, clicks the actual create/open buttons, verifies the displayed creation directory matches the created directory, and checks initial/cancel/selected-root/deleted-root/denied-root/reselected-root chooser behaviour. Only that test process's native chooser is stubbed to inspect Electron options and simulate cancel/select; this does not claim native OS dialog pixel acceptance. It also changes only that test process's cwd and verifies the selected project root still wins. Existing files, selection and settings survive cancel; no CLI or model is started. Record: `project-navigation-ui-current.json`.

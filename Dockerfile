@@ -10,7 +10,8 @@ COPY package.json bun.lock ./
 COPY apps/server/package.json ./apps/server/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
-RUN bun install --frozen-lockfile
+COPY apps/desktop/package.json ./apps/desktop/package.json
+RUN bun install --frozen-lockfile --filter @aidlc/server --filter @aidlc/web
 COPY aidlc.lock.json ./
 COPY scripts/fetch-aidlc.ts ./scripts/fetch-aidlc.ts
 COPY apps/server/src/workspace/aidlc.ts apps/server/src/workspace/command.ts ./apps/server/src/workspace/

@@ -90,6 +90,7 @@ export function parseContract(source: string, stage: MockupStage) {
 export async function readMockups(
   workspace: string,
   intent: string,
+  options: { verifyAssets?: boolean } = {},
 ): Promise<MockupsResponse> {
   const progress = await readProgress(workspace, false, false);
   const registered = progress.intents.find((i) => i.dirName === intent);
@@ -155,6 +156,7 @@ export async function readMockups(
     if (result.parsing !== "supported")
       result.message =
         "旧形式または未知の schema：未検証。工程承認の証明ではありません。";
+    if (options.verifyAssets === false) continue;
     result.integrity = "matched";
     const dir = path.slice(0, path.lastIndexOf("/"));
     for (const asset of result.assets) {
