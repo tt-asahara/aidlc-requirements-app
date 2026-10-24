@@ -401,13 +401,61 @@ body [hidden],
 }
 
 #workflowContext {
-  padding: 8px 10px;
-  background: #e7eee1;
-  border-radius: 7px;
-  margin-bottom: 8px;
+  margin: 0 0 6px;
+  padding: 0;
+  background: transparent;
+  border-bottom: 1px solid #d4dbce;
   flex-shrink: 0;
-  max-height: 210px;
+  max-height: min(38vh, 240px);
   overflow: auto;
+}
+#workflowContext > summary {
+  padding: 5px 2px;
+  font-size: 12px;
+}
+.workflow-details {
+  padding: 6px 8px 10px;
+}
+.contract-summary {
+  margin-left: 8px;
+  font-size: 11px;
+  color: #52684e;
+}
+.contract-summary.needs-attention {
+  color: #8b511c;
+  font-weight: 600;
+}
+.preview-toolbar {
+  margin-bottom: 6px;
+  align-items: center;
+}
+.preview-toolbar > div {
+  min-width: 0;
+  flex: 1;
+}
+.preview-toolbar small {
+  font-size: 10px;
+}
+#fileTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-kind {
+  font-size: 11px;
+  color: #52684e;
+}
+#capture {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+#previewHint {
+  margin: 0 0 6px;
+  padding: 5px 8px;
+  background: #fff1de;
+  border-radius: 4px;
+  color: #84521f;
 }
 #workflowContext select {
   max-width: 100%;

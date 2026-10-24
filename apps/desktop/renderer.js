@@ -1,7 +1,17 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { Terminal } from "@xterm/xterm";
-import { artifactLabel } from "../../packages/workbench/artifact-labels.mjs";
+import {
+  artifactLabel,
+  screenStage,
+} from "../../packages/workbench/artifact-labels.mjs";
+import {
+  contractForFile,
+  mappingsForFile,
+  mappingTarget,
+  stageCandidate,
+  stageLabel,
+} from "../../packages/workbench/preview-selection.mjs";
 import { documentView } from "./document-view.js";
 import { navigatorView } from "./navigator-view.js";
 
@@ -14,13 +24,14 @@ let state = {},
   shotImage = null,
   renderedRoot = null,
   selectionRequest = 0,
+  pendingSelection = null,
   securityReviewKey = "",
   creatingLocal = false;
 const setDocument = documentView(
   $("document"),
   (name) => void select(name).catch(() => {}),
 );
-const renderArtifacts = navigatorView(() => state, call, select);
+const renderArtifacts = navigatorView(() => state, call, select, changeStage);
 const terminal = new Terminal({
   fontFamily: "Menlo,monospace",
   fontSize: 13,
@@ -140,9 +151,12 @@ $("comment").addEventListener("input", () => {
 function render(s) {
   renderCommentDraft(s);
   if (renderedRoot !== s.active?.root) {
+    ++selectionRequest;
+    pendingSelection = null;
     renderedRoot = s.active?.root;
     $("screenStageFilter").value = "all";
     $("screenSearch").value = "";
+    $("workflowContext").open = false;
     $("annotation").hidden = true;
     $("previewArea").hidden = false;
     $("fileTitle").textContent = "モックを見ながら、具体化する";
@@ -220,9 +234,19 @@ function render(s) {
     : "未起動/終了";
   $("capture").disabled =
     !s.selected?.path?.endsWith(".html") || !!s.selected?.previewWarning;
-  $("previewHint").textContent = s.selected?.previewWarning
+  const warning = s.selected?.previewWarning
     ? `契約情報を検証できないため閲覧のみです。撮影・下書きの受渡しはできません: ${s.selected.previewWarning}`
-    : "右の画面や文書を選択してください。HTMLは端末から隔離して表示します。";
+    : "";
+  $("previewHint").textContent = warning;
+  $("previewHint").hidden = !warning;
+  $("capture").title =
+    warning ||
+    "操作後の画面を撮影し、指示の下書きを作ります。自動送信しません。";
+  $("previewKind").textContent = s.selected?.path?.endsWith(".html")
+    ? stageLabel(screenStage(s.selected.path))
+    : s.selected
+      ? "文書"
+      : "";
   renderArtifacts(s);
   renderWorkflow();
   $("settingsInfo").textContent =
@@ -299,6 +323,7 @@ function render(s) {
   );
   if (!s.selected) {
     setDocument("");
+    $("document").hidden = true;
     $("annotation").hidden = true;
     $("previewArea").hidden = false;
     $("empty").hidden = false;
@@ -318,46 +343,48 @@ function render(s) {
   layout();
 }
 let workflowKey = "",
-  mappedFile = "",
   mappingContextKey = "";
 function currentContract() {
-  return state.workflow?.mockups?.contracts.find(
-    (c) => c.stage === $("contractStage").value,
-  );
+  return contractForFile(state.workflow?.mockups, state.selected?.path);
 }
 function currentMapping() {
-  return currentContract()?.mappings[Number($("mapping").value)];
+  if (!$("mapping").value) return undefined;
+  const c = currentContract(),
+    m = c?.mappings[Number($("mapping").value)];
+  return mappingTarget(state.workflow?.mockups, c, m) === state.selected?.path
+    ? m
+    : undefined;
 }
 function mappingPath() {
-  const c = currentContract(),
-    m = currentMapping(),
-    projection = state.workflow?.mockups;
-  return c && m && projection
-    ? `aidlc/spaces/${projection.space}/${c.path.slice(0, c.path.lastIndexOf("/"))}/${m.asset}`
-    : null;
+  return mappingTarget(
+    state.workflow?.mockups,
+    currentContract(),
+    currentMapping(),
+  );
 }
 function updateMappingHint() {
   const m = currentMapping();
   $("mappingHint").textContent = m
-    ? `議論する対象です。選択だけで状態を再現しません。モック内の操作で確認してください。確認項目: ${m.check}`
-    : "契約の対応付けはまだありません。";
-  $("openMapping").disabled = !m?.asset.endsWith(".html");
+    ? `議論する対象です。選択だけで状態を再現しません。モック内で操作してください。確認項目: ${m.check}`
+    : "状態・ACは任意の参照です。画面の状態を自動再生したり、工程を承認したりしません。";
 }
 function renderWorkflow() {
   const w = state.workflow,
-    progress = w?.progress;
-  $("workflowStatus").textContent =
-    w?.message ??
-    (progress?.active
-      ? `実行対象: ${progress.active.dirName} / ${progress.active.currentStage ?? "未開始"}`
-      : "工程未生成");
-  $("workflowContext").hidden = !progress?.intents?.length;
-  if (!progress?.intents?.length) return;
-  const roundKey = JSON.stringify([progress.intents, state.viewIntent]);
+    progress = w?.progress,
+    c = currentContract();
+  $("workflowStatus").textContent = progress?.active
+    ? `実行対象: ${progress.active.dirName} / ${progress.active.currentStage ?? "未開始"}`
+    : (w?.message ?? "工程未生成");
+  $("workflowContext").hidden = !(
+    progress?.intents?.length ||
+    state.selected?.path?.endsWith(".html") ||
+    w?.message
+  );
+  const roundKey = JSON.stringify([progress?.intents, state.viewIntent]);
   if ($("viewRound").dataset.key !== roundKey) {
     $("viewRound").dataset.key = roundKey;
     $("viewRound").replaceChildren();
-    for (const i of progress.intents) {
+    for (const i of progress?.intents ?? []) {
       const o = el(
         "option",
         `${i.slug} · ${i.dirName}${i.isActive ? "（実行対象）" : "（過去・参照）"}`,
@@ -365,62 +392,129 @@ function renderWorkflow() {
       o.value = i.dirName;
       $("viewRound").append(o);
     }
-    $("viewRound").value = state.viewIntent;
+    $("viewRound").value = state.viewIntent ?? "";
+    $("viewRound").disabled = !progress?.intents?.length;
   }
-  if (mappedFile !== state.selected?.path) {
-    mappedFile = state.selected?.path;
-    if (mappedFile?.includes("refined-mockups/"))
-      $("contractStage").value = "refined-mockups";
-    else if (mappedFile?.includes("rough-mockups/"))
-      $("contractStage").value = "rough-mockups";
-  }
-  const c = currentContract(),
-    key = JSON.stringify([state.viewIntent, c]);
+  const context = JSON.stringify([
+      state.viewIntent,
+      c?.stage,
+      c?.sha256,
+      state.selected?.path,
+    ]),
+    key = JSON.stringify([context, c]);
   if (workflowKey !== key) {
-    const context = JSON.stringify([state.viewIntent, c?.stage, c?.sha256]);
-    const prior =
-      context === mappingContextKey
-        ? JSON.stringify(currentMapping() ?? null)
-        : null;
+    const prior = context === mappingContextKey ? $("mapping").value : "";
     mappingContextKey = context;
     workflowKey = key;
     $("mapping").replaceChildren();
-    for (const [index, m] of (c?.mappings ?? []).entries()) {
+    const blank = el("option", "状態・ACを選択（任意）");
+    blank.value = "";
+    $("mapping").append(blank);
+    const rows = mappingsForFile(w?.mockups, c, state.selected?.path);
+    for (const { mapping: m, index } of rows) {
       const o = el("option", `${m.screen} / ${m.state} / ${m.ac}`);
       o.value = String(index);
       $("mapping").append(o);
     }
-    const previousIndex = c?.mappings.findIndex(
-      (m) => JSON.stringify(m) === prior,
-    );
-    if (previousIndex >= 0) $("mapping").value = String(previousIndex);
-    $("contractStatus").textContent = c
-      ? `契約: ${c.parsing} / 実バイト整合: ${c.integrity} / 工程記録: ${c.stageMark ?? "なし"} · ${c.message ?? "契約の解析・ハッシュ一致だけでは本人承認の証明になりません。"}`
-      : "契約未生成";
+    $("mapping").value = rows.some((r) => String(r.index) === prior)
+      ? prior
+      : "";
+    $("mapping").disabled = !rows.length;
     updateMappingHint();
   }
+  $("contractStatus").textContent = c
+    ? `契約: ${c.parsing} / 実バイト整合: ${c.integrity} / 工程記録: ${c.stageMark ?? "なし"} · ${c.message ?? "契約の解析・ハッシュ一致だけでは本人承認の証明になりません。"}`
+    : (w?.message ??
+      "このHTMLに対応する契約情報はありません。右の画面一覧から直接閲覧できます。");
+  const summary = state.selected?.previewWarning
+    ? "閲覧のみ"
+    : c?.parsing === "missing"
+      ? "契約未生成"
+      : c && c.parsing !== "supported"
+        ? "契約に不備・未検証"
+        : c?.integrity === "mismatched"
+          ? "原本の確認が必要"
+          : !c && state.selected?.path?.endsWith(".html") && w?.message
+            ? "契約情報を確認"
+            : c
+              ? "状態・ACを確認"
+              : "";
+  $("contractSummary").textContent = summary;
+  $("contractSummary").classList.toggle(
+    "needs-attention",
+    !!state.selected?.previewWarning ||
+      (!!c && (c.parsing !== "supported" || c.integrity === "mismatched")) ||
+      (!c && state.selected?.path?.endsWith(".html") && !!w?.message),
+  );
+  const kind = $("screenStageFilter").value;
+  $("empty").textContent =
+    kind === "all"
+      ? "右の画面イメージや文書から、表示するものを選択してください。"
+      : `右の${stageLabel(kind)}から、表示する画面を選択してください。`;
 }
-button("openMapping", () => {
-  const target = mappingPath();
-  if (target && target !== state.selected?.path) return select(target);
-});
 $("mapping").onchange = updateMappingHint;
-$("contractStage").onchange = renderWorkflow;
-$("viewRound").onchange = () =>
+$("viewRound").onchange = () => {
+  ++selectionRequest;
+  pendingSelection = null;
   void call("workflow.view", { intent: $("viewRound").value }).catch(() => {});
+};
+$("workflowContext").addEventListener("toggle", layout);
+async function changeStage(kind) {
+  const active = state.active;
+  if (!active) return;
+  const source = pendingSelection?.path ?? state.selected?.path;
+  if (source && !source.endsWith(".html")) {
+    renderWorkflow();
+    return;
+  }
+  if (kind === "all") {
+    renderWorkflow();
+    return;
+  }
+  const target = stageCandidate(state, kind);
+  if (target) {
+    if (target !== state.selected?.path || pendingSelection)
+      await select(target);
+    else renderWorkflow();
+  } else {
+    ++selectionRequest;
+    pendingSelection = null;
+    await call("files.clear", { root: active.root });
+    renderWorkflow();
+    layout();
+  }
+}
 api.onState(render);
 async function select(name) {
   const request = ++selectionRequest;
-  const r = await call("files.select", { path: name });
-  if (request !== selectionRequest) return;
-  $("fileTitle").textContent = artifactLabel(name, state.workflow?.mockups);
-  $("fileTitle").title = name;
-  $("empty").hidden = true;
-  $("annotation").hidden = true;
-  $("previewArea").hidden = false;
-  $("document").hidden = r.type === "html";
-  setDocument(r.type === "html" ? "" : name, r.text ?? "");
-  layout();
+  pendingSelection = { request, path: name };
+  if (name.endsWith(".html")) {
+    $("screenStageFilter").value = screenStage(name);
+    renderArtifacts(state);
+  }
+  try {
+    const r = await call("files.select", { path: name });
+    if (request !== selectionRequest) return;
+    $("fileTitle").textContent = artifactLabel(name, state.workflow?.mockups);
+    $("fileTitle").title = name;
+    $("empty").hidden = true;
+    $("annotation").hidden = true;
+    $("previewArea").hidden = false;
+    $("document").hidden = r.type === "html";
+    setDocument(r.type === "html" ? "" : name, r.text ?? "");
+    layout();
+  } catch (e) {
+    if (
+      request === selectionRequest &&
+      state.selected?.path?.endsWith(".html")
+    ) {
+      $("screenStageFilter").value = screenStage(state.selected.path);
+      renderArtifacts(state);
+    }
+    throw e;
+  } finally {
+    if (pendingSelection?.request === request) pendingSelection = null;
+  }
 }
 async function createLocal() {
   if (creatingLocal) return false;

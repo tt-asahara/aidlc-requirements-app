@@ -1040,6 +1040,17 @@ async function initialize() {
       return state();
     },
     "files.select": async (b) => showFile(b.path),
+    "files.clear": async (b) => {
+      if (typeof b.root !== "string")
+        throw new Error("案件の表示対象を確認してください");
+      if (b.root !== workspace.active?.root) return state();
+      selected = null;
+      documentText = "";
+      previewScene = null;
+      previewReady = false;
+      hidePreview();
+      return state();
+    },
     "documents.page": async (b) => {
       const current = documentCatalog;
       if (!current || current.root !== workspace.active?.root)

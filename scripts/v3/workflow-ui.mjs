@@ -64,13 +64,16 @@ try {
   }
   await call("files.refresh");
   await expect(p.locator("#workflowStatus")).toContainText("round-2");
-  await p.locator("#contractStage").selectOption("refined-mockups");
-  await expect(p.locator("#mapping option")).toHaveCount(2);
-  await expect(p.locator("#contractStatus")).toContainText(
-    "supported / 実バイト整合: unchecked",
-  );
-  await p.locator("#openMapping").click();
+  await p.locator("#screenStageFilter").selectOption("refined");
+  await expect
+    .poll(async () => (await call("state")).selected?.path)
+    .toBe(
+      "aidlc/spaces/default/intents/round-2/inception/refined-mockups/index.html",
+    );
+  await expect(p.locator("#mapping option")).toHaveCount(3);
+  await expect(p.locator("#contractStatus")).toContainText("supported");
   await expect(p.locator("#contractStatus")).toContainText("matched");
+  await p.locator("#workflowContext summary").click();
   await p.locator("#mapping").selectOption("1");
   const before = (await call("state")).selected;
   await expect(p.locator("#mappingHint")).toContainText(
@@ -80,6 +83,11 @@ try {
   await p.locator("#capture").click();
   await expect(p.locator("#draft")).toHaveValue(/AC: AC2/);
   await p.locator("#viewRound").selectOption("round-1");
+  await p
+    .locator(
+      'button[data-file-path="aidlc/spaces/default/intents/round-1/inception/refined-mockups/index.html"]',
+    )
+    .click();
   await expect(p.locator("#contractStatus")).toContainText("legacy");
   const snapshot = await stableSnapshot(root);
   assert(snapshot.files.some((f) => f.path === "aidlc/active-space"));

@@ -117,9 +117,7 @@ try {
   assert(oversizedVisible);
   assert.equal(await app.mainEvaluate("globalThis.unselectedBodyReads"), 0);
   const enumerationMs = Date.now() - started;
-  await app.page.locator("#contractStage").selectOption("refined-mockups");
-  await expect(app.page.locator("#contractStatus")).toContainText("unchecked");
-  await app.page.locator("#openMapping").click();
+  await app.page.locator("#screenStageFilter").selectOption("refined");
   await expect.poll(async () => (await state()).selected?.path).toBe(htmlPath);
   await expect(app.page.locator("#contractStatus")).toContainText("matched");
   let shot = await call("preview.capture", {

@@ -4,7 +4,7 @@ import {
   artifactLabel,
   screenStage,
 } from "../../packages/workbench/artifact-labels.mjs";
-export function navigatorView(current, call, select) {
+export function navigatorView(current, call, select, changeStage) {
   const $ = (id) => document.getElementById(id),
     keys = new Map();
   const el = (tag, text) => {
@@ -133,7 +133,10 @@ export function navigatorView(current, call, select) {
       );
     }
   }
-  $("screenStageFilter").onchange = () => render(current());
+  $("screenStageFilter").onchange = () => {
+    render(current());
+    void changeStage($("screenStageFilter").value).catch(() => {});
+  };
   $("screenSearch").oninput = () => render(current());
   for (const group of ["requirements", "design"])
     for (const [suffix, direction] of [

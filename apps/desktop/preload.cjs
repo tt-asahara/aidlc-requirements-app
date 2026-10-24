@@ -13,6 +13,7 @@ const actions = new Set([
   "documents.cancel",
   "workflow.view",
   "files.select",
+  "files.clear",
   "preview.bounds",
   "preview.capture",
   "draft.copy",
