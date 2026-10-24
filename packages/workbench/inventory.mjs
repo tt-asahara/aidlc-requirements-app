@@ -109,11 +109,13 @@ export class LocalInventory {
       scanned: this.scanned,
       eligible: this.eligible,
       skipped: this.skipped,
+      failure: this.failure ?? null,
       pageSize: this.pageSize,
     };
   }
   async close() {
     this.cancelled = true;
+    this.userCancelled = true;
     await this.busy?.catch(() => {});
     await this.closeFrames();
   }
@@ -150,7 +152,12 @@ export class LocalInventory {
   }
   async page(direction = "next") {
     if (this.busy) throw new Error("一覧を読取中です");
-    this.busy = this.readPage(direction);
+    this.busy = this.readPage(direction).catch(async (e) => {
+      this.cancelled = true;
+      if (!this.userCancelled) this.failure = e.message;
+      await this.closeFrames();
+      throw e;
+    });
     try {
       return await this.busy;
     } finally {

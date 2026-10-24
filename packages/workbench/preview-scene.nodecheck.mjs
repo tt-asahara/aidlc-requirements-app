@@ -87,3 +87,57 @@ test("late resources, secret content, directory escapes and symlinks cannot bypa
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test("served-resource concurrency is bounded and absent contracts/root identity are fenced", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "v3-scene-limits-"));
+  const old = `${root}-old`;
+  const folder = "refined-mockups/assets";
+  try {
+    await fs.mkdir(path.join(root, folder), { recursive: true });
+    await fs.writeFile(path.join(root, folder, "index.html"), "<h1>test</h1>");
+    await fs.writeFile(path.join(root, folder, "style.css"), "h1{}");
+    const scene = await new PreviewScene(
+      root,
+      `${folder}/index.html`,
+    ).initialize();
+    const original = fs.open;
+    let open = 0,
+      peak = 0;
+    t.mock.method(fs, "open", async (...args) => {
+      const handle = await original(...args);
+      open++;
+      peak = Math.max(peak, open);
+      return {
+        stat: () => handle.stat(),
+        read: (...a) => handle.read(...a),
+        close: async () => {
+          open--;
+          return handle.close();
+        },
+      };
+    });
+    await Promise.all(
+      Array.from({ length: 16 }, () => scene.read(`${folder}/style.css`)),
+    );
+    assert(peak <= 4);
+    assert.equal(open, 0);
+    t.mock.restoreAll();
+    const proof = await scene.prove();
+    await fs.writeFile(
+      path.join(root, "refined-mockups/ui-poc-refined-contract.md"),
+      "new contract",
+    );
+    await assert.rejects(scene.prove(proof), /契約/);
+    const next = await new PreviewScene(
+      root,
+      `${folder}/index.html`,
+    ).initialize();
+    await fs.rename(root, old);
+    await fs.mkdir(root);
+    await assert.rejects(next.prove(), /ルート/);
+  } finally {
+    t.mock.restoreAll();
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(old, { recursive: true, force: true });
+  }
+});

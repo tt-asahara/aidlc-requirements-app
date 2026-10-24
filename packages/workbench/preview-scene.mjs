@@ -51,11 +51,13 @@ export class PreviewScene {
   async initialize() {
     await this.checkRoot();
     this.bindings = await this.readBindings();
+    this.bindingMetadata = this.observedBindingMetadata;
     await this.read(this.html);
     return this;
   }
   async readBindings() {
     const entries = [];
+    this.observedBindingMetadata = new Map();
     for (const name of bindingsFor(this.html)) {
       try {
         const m = await metadataSafe(this.root, name);
@@ -63,9 +65,11 @@ export class PreviewScene {
           throw new Error("契約/実行対象情報の読取上限256KiBです");
         const f = await loadContent(this.root, name);
         entries.push({ path: name, sha256: f.sha256 });
+        this.observedBindingMetadata.set(name, f.revision);
       } catch (e) {
         if (e.code !== "ENOENT") throw e;
         entries.push({ path: name, sha256: null });
+        this.observedBindingMetadata.set(name, null);
       }
     }
     return entries;
@@ -95,6 +99,8 @@ export class PreviewScene {
       await new Promise((resolve) => this.waiters.push(resolve));
     else this.active++;
     try {
+      if (this.stale)
+        throw new Error(this.failure ?? "古いモックです。再読取してください");
       await this.checkRoot();
       const meta = await metadataSafe(this.root, name);
       const old = this.resources.get(name);
@@ -142,6 +148,14 @@ export class PreviewScene {
     }
   }
   async metadataChanged() {
+    for (const [name, revision] of this.bindingMetadata ?? []) {
+      try {
+        if ((await metadataSafe(this.root, name)).revision !== revision)
+          return true;
+      } catch (e) {
+        if (e.code !== "ENOENT" || revision !== null) return true;
+      }
+    }
     for (const f of this.resources.values())
       try {
         if ((await metadataSafe(this.root, f.path)).revision !== f.revision)

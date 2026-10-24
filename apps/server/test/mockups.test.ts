@@ -226,3 +226,32 @@ test("aggregate bytes and mapping count are bounded independently of per-file li
     ),
   ).toThrow();
 });
+
+test("metadata projection keeps every mapping without reading asset bodies; default verification remains strict", async () => {
+  const f = await fixture();
+  await writeFile(join(f.dir, asset.path), "changed asset");
+  const { spyOn } = await import("bun:test");
+  const artifacts = await import("../src/reader/artifacts.ts");
+  const original = artifacts.readArtifact;
+  let assetReads = 0;
+  const spy = spyOn(artifacts, "readArtifact").mockImplementation(
+    async (...args) => {
+      if (args[2].endsWith("shared.html")) assetReads++;
+      return original(...args);
+    },
+  );
+  try {
+    const metadata = await readMockups(f.root, "round-1", {
+      verifyAssets: false,
+    });
+    expect(metadata.contracts[1]?.integrity).toBe("unchecked");
+    expect(metadata.contracts[1]?.mappings.length).toBe(3);
+    expect(assetReads).toBe(0);
+    expect((await readMockups(f.root, "round-1")).contracts[1]?.integrity).toBe(
+      "mismatched",
+    );
+    expect(assetReads).toBe(1);
+  } finally {
+    spy.mockRestore();
+  }
+});

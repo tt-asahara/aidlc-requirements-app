@@ -16,6 +16,11 @@ import {
   utilityProcess,
   WebContentsView,
 } from "electron";
+import {
+  LocalInventory,
+  loadContent,
+  metadataSafe,
+} from "../../packages/workbench/inventory.mjs";
 import { LeaseHeartbeat } from "../../packages/workbench/lease-heartbeat.mjs";
 import {
   applyHarness,
@@ -29,18 +34,14 @@ import {
   LocalWorkspace,
   rollbackHarness,
 } from "../../packages/workbench/local.mjs";
-import {
-  hash,
-  readSafe,
-  safeName,
-  stableIndexSnapshot,
-} from "../../packages/workbench/manifest.mjs";
+import { hash, safeName } from "../../packages/workbench/manifest.mjs";
 import {
   authorizeNative,
   httpsOrigin,
   oidcPolicy,
   secureJson,
 } from "../../packages/workbench/oidc.mjs";
+import { PreviewScene } from "../../packages/workbench/preview-scene.mjs";
 import { projectDialogDirectory } from "../../packages/workbench/project-dialog.mjs";
 import {
   downloadRelease,
@@ -90,12 +91,17 @@ let workspace = new LocalWorkspace(config.store),
   previewToken,
   previewVisible = false,
   previewReady = false,
-  previewSceneHash = null,
+  previewScene = null,
   selected = null,
   documentText = "",
   workflow = { progress: null, mockups: null, message: null },
   viewIntent = null,
-  stable = { files: [], hash: "" },
+  stable = { files: [] },
+  inventory = null,
+  inventoryReading = false,
+  refreshBusy = null,
+  localDirty = false,
+  fileEventGeneration = 0,
   sharing = null,
   shared = null,
   remoteConnection = null,
@@ -155,7 +161,10 @@ function state() {
     cli,
     active: workspace.active ? { ...workspace.active } : null,
     files: stable.files.map(({ data, ...f }) => f),
-    hash: stable.hash,
+    hash: shared && !localDirty ? workspace.active?.hash : null,
+    inventory: inventory
+      ? { ...inventory.summary(), reading: inventoryReading }
+      : null,
     selected,
     documentText,
     workflow,
@@ -261,11 +270,57 @@ async function requestAt(connection, route, method = "GET", body) {
     });
   return result;
 }
-async function refresh() {
-  if (!workspace.active) return;
-  const root = workspace.active.root;
+async function inventoryPage(direction = "next") {
+  const current = inventory,
+    root = workspace.active?.root;
+  if (!current || current.root !== root)
+    throw new Error("案件の一覧を再読取してください");
+  inventoryReading = true;
+  push();
   try {
-    const result = await stableIndexSnapshot(root);
+    const page = await current.page(direction);
+    if (inventory !== current || workspace.active?.root !== root) return;
+    stable = { files: page.files };
+  } catch (e) {
+    if (!current.userCancelled && inventory === current) throw e;
+  } finally {
+    if (inventory === current) {
+      inventoryReading = false;
+      push();
+    }
+  }
+}
+async function refresh(options = {}) {
+  if (refreshBusy) {
+    const old = refreshBusy;
+    await old.catch(() => {});
+    if (options.reset || inventory?.root !== workspace.active?.root)
+      return refresh(options);
+    return;
+  }
+  const work = refreshInside(options);
+  refreshBusy = work;
+  try {
+    await work;
+  } finally {
+    if (refreshBusy === work) refreshBusy = null;
+  }
+}
+async function refreshInside({ reset = false } = {}) {
+  const root = workspace.active?.root;
+  if (!root) {
+    await inventory?.close();
+    inventory = null;
+    stable = { files: [] };
+    return;
+  }
+  try {
+    if (reset || !inventory || inventory.root !== root) {
+      await inventory?.close();
+      if (workspace.active?.root !== root) return;
+      inventory = new LocalInventory(root);
+      await inventoryPage();
+    }
     if (workspace.active?.root !== root) return;
     if (fileReadError?.root === root && error === fileReadError.message)
       error = null;
@@ -288,7 +343,7 @@ async function refresh() {
         : (progress.active?.dirName ?? progress.intents[0]?.dirName ?? null);
       projection = {
         progress,
-        mockups: intent ? await readMockups(root, intent) : null,
+        mockups: intent ? await readMockups(root, intent, false) : null,
         message: null,
       };
       if (workspace.active?.root === root) viewIntent = intent;
@@ -299,32 +354,32 @@ async function refresh() {
         message: `工程・契約を読めません: ${e.message}`,
       };
     }
-
     if (workspace.active?.root !== root) return;
-    const changed = stable.hash !== result.hash;
-    stable = result;
     workflow = projection;
     appliedHarness = harness.current;
     lastBackup = harness.lastBackup;
-    if (changed) {
-      if (selected?.path) {
-        const f = stable.files.find((f) => f.path === selected.path);
-        if (f) {
-          selected = { path: f.path, sha256: f.sha256 };
-          if (f.path.endsWith(".md") || f.path.endsWith(".txt"))
-            documentText = (await workspace.file(f.path)).toString("utf8");
-          if (
-            previewVisible &&
-            (previewSceneHash !== sceneHash(selected.path) || !previewReady)
-          )
-            await showFile(selected.path);
-        } else {
-          selected = null;
-          hidePreview();
+    if (selected?.path) {
+      try {
+        if (
+          previewVisible &&
+          previewScene &&
+          (await previewScene.metadataChanged())
+        )
+          await showFile(selected.path);
+        else if (
+          !selected.path.endsWith(".html") &&
+          (await metadataSafe(root, selected.path)).revision !==
+            selected.revision
+        ) {
+          const f = await loadContent(root, selected.path);
+          selected = { path: f.path, sha256: f.sha256, revision: f.revision };
+          documentText = f.bytes.toString("utf8");
         }
+      } catch (e) {
+        error = `選択したファイルを確認できません: ${e.message}`;
       }
-      push();
-    } else if (harness.metadataCorrupt || harness.warnings?.length) push();
+    }
+    push();
   } catch (e) {
     if (workspace.active?.root !== root) return;
     fileReadError = { root, message: e.message };
@@ -333,7 +388,11 @@ async function refresh() {
   }
 }
 function resetLocalProjection() {
-  stable = { files: [], hash: "" };
+  void inventory?.close();
+  inventory = null;
+  inventoryReading = false;
+  stable = { files: [] };
+  previewScene = null;
   selected = null;
   documentText = "";
   viewIntent = null;
@@ -347,7 +406,13 @@ function observe() {
   clearTimeout(watchTimer);
   if (!workspace.active) return;
   try {
-    watcher = watch(workspace.active.root, { recursive: true }, () => {
+    const watchedRoot = workspace.active.root;
+    if (inventory?.root !== watchedRoot) localDirty = false;
+    watcher = watch(watchedRoot, { recursive: true }, () => {
+      if (workspace.active?.root !== watchedRoot) return;
+      inventory?.markDirty();
+      localDirty = true;
+      fileEventGeneration++;
       clearTimeout(watchTimer);
       watchTimer = setTimeout(() => void refresh(), 250);
     });
@@ -356,43 +421,33 @@ function observe() {
   }
   void refresh();
 }
-function sceneHash(name) {
-  const dir = path.posix.dirname(name);
-  return hash(
-    JSON.stringify(
-      stable.files
-        .filter(
-          (f) =>
-            (dir === "." || f.path.startsWith(`${dir}/`)) &&
-            !/\.(md|txt)$/i.test(f.path),
-        )
-        .map((f) => [f.path, f.sha256]),
-    ),
-  );
-}
 function hidePreview() {
   previewVisible = false;
   if (preview) preview.setVisible(false);
 }
 async function showFile(name) {
-  const entry = stable.files.find((f) => f.path === name);
-  if (!entry) throw new Error("安定した最新版にファイルがありません");
+  safeName(name);
+  const root = workspace.active?.root;
+  if (!root) throw new Error("案件を開いてください");
+  const content = await loadContent(root, name);
+  if (workspace.active?.root !== root) throw new Error("案件が変わりました");
   const fileIntent = name.match(
     /^aidlc\/spaces\/[^/]+\/intents\/([^/]+)\//,
   )?.[1];
   if (
     fileIntent &&
-    workflow.progress?.intents.some((i) => i.dirName === fileIntent) &&
-    viewIntent !== fileIntent
+    workflow.progress?.intents.some((i) => i.dirName === fileIntent)
   ) {
     viewIntent = fileIntent;
-    workflow.mockups = await readMockups(workspace.active.root, fileIntent);
+    workflow.mockups = await readMockups(root, fileIntent);
   }
-  selected = { path: name, sha256: entry.sha256 };
   if (name.endsWith(".html")) {
+    const scene = await new PreviewScene(root, name).initialize();
+    if (workspace.active?.root !== root) throw new Error("案件が変わりました");
+    selected = { ...scene.resources.get(name) };
     documentText = "";
     previewReady = false;
-    const expectedScene = sceneHash(name);
+    previewScene = scene;
     previewFile = name;
     previewToken = randomUUID();
     previewVisible = true;
@@ -400,17 +455,15 @@ async function showFile(name) {
     await preview.webContents.loadURL(
       `aidlc-preview://p-${previewToken}/${previewToken}/${name.split("/").map(encodeURIComponent).join("/")}`,
     );
-    previewSceneHash = expectedScene;
-    previewReady = sceneHash(name) === expectedScene;
+    if (previewScene !== scene || workspace.active?.root !== root)
+      throw new Error("撮影対象が変わりました");
+    previewReady = !scene.stale;
     return { type: "html", selected };
   }
+  selected = { path: name, sha256: content.sha256, revision: content.revision };
   hidePreview();
-  documentText = (await workspace.file(name)).toString("utf8");
-  return {
-    type: "document",
-    selected,
-    text: documentText,
-  };
+  documentText = content.bytes.toString("utf8");
+  return { type: "document", selected, text: documentText };
 }
 function pidExists(pid) {
   if (!pid) return false;
@@ -735,11 +788,17 @@ async function initialize() {
       const directory = path.posix.dirname(previewFile);
       if (directory !== "." && !name.startsWith(`${directory}/`))
         throw new Error("preview directory denied");
-      if (!stable.files.some((f) => f.path === name))
-        throw new Error("not in manifest");
-      const bytes = await readSafe(workspace.active.root, name);
-      if (hash(bytes) !== stable.files.find((f) => f.path === name).sha256)
-        throw new Error("file changed");
+      const scene = previewScene,
+        token = previewToken;
+      if (!scene || scene.root !== workspace.active.root)
+        throw new Error("preview context changed");
+      const { bytes } = await scene.read(name);
+      if (
+        scene !== previewScene ||
+        token !== previewToken ||
+        scene.root !== workspace.active?.root
+      )
+        throw new Error("preview context changed");
       const mime =
         {
           ".html": "text/html; charset=utf-8",
@@ -916,7 +975,21 @@ async function initialize() {
       return state();
     },
     "files.refresh": async () => {
-      await refresh();
+      await refresh({ reset: true });
+      return state();
+    },
+    "files.page": async (b) => {
+      if (!inventory || b.id !== inventory.id)
+        throw new Error("一覧の対象が変わりました。再読取してください");
+      await inventoryPage(b.direction);
+      return state();
+    },
+    "files.cancel": async (b) => {
+      if (!inventory || b.id !== inventory.id)
+        throw new Error("一覧の対象が変わりました");
+      const current = inventory;
+      await current.close();
+      if (inventory === current) inventoryReading = false;
       return state();
     },
     "files.select": async (b) => showFile(b.path),
@@ -945,25 +1018,33 @@ async function initialize() {
       preview.setVisible(!!previewVisible);
       return {};
     },
-    "preview.capture": async () => {
+    "preview.capture": async (b) => {
+      const scene = previewScene;
       if (
         !previewVisible ||
         !selected ||
         !previewReady ||
-        previewSceneHash !== sceneHash(selected.path)
+        !scene ||
+        scene.html !== selected.path ||
+        scene.root !== workspace.active?.root
       )
         throw new Error("モックの安定した読込を待ってください");
-      const manifestBefore = await workspace.index();
+      scene.assertExpectedContract(b.contract);
+      const proof = await scene.prove();
       const frozen = {
         ...selected,
-        manifestHash: manifestBefore.hash,
+        sceneHash: proof.hash,
+        assets: proof.resources,
+        contracts: proof.bindings,
         root: workspace.active.root,
         project: workspace.active.project,
         version: workspace.active.version,
         epoch: workspace.active.epoch,
       };
-      const before = await workspace.file(frozen.path);
-      if (hash(before) !== frozen.sha256)
+      if (
+        proof.resources.find((f) => f.path === frozen.path)?.sha256 !==
+        frozen.sha256
+      )
         throw new Error("版が変わりました。下書きを保持して再撮影してください");
       let image = await preview.webContents.capturePage();
       const size = image.getSize();
@@ -979,13 +1060,16 @@ async function initialize() {
         height: png.readUInt32BE(20),
       };
       if (png.length > 4 * 1024 * 1024) throw new Error("画像容量上限です");
+      await scene.prove(proof);
       if (
-        hash(await workspace.file(frozen.path)) !== frozen.sha256 ||
-        (await workspace.index()).hash !== frozen.manifestHash
+        scene !== previewScene ||
+        frozen.root !== workspace.active?.root ||
+        selected?.path !== frozen.path
       )
-        throw new Error("撮影中に変更されました");
+        throw new Error("撮影中に対象が変わりました");
       const id = randomUUID();
-      shots.set(id, { ...frozen, png, ...bitmap });
+      if (shots.size >= 8) shots.delete(shots.keys().next().value);
+      shots.set(id, { ...frozen, png, ...bitmap, scene, proof });
       hidePreview();
       return {
         id,
@@ -1004,10 +1088,10 @@ async function initialize() {
         shot.root !== workspace.active.root ||
         shot.version !== workspace.active.version ||
         shot.epoch !== workspace.active.epoch ||
-        hash(await workspace.file(shot.path)) !== shot.sha256 ||
-        (await workspace.index()).hash !== shot.manifestHash
+        shot.path !== selected?.path
       )
         throw new Error("古い版の指示です。下書きを保持し再撮影してください");
+      await shot.scene.prove(shot.proof);
       if (shared) editable();
       if (
         typeof b.text !== "string" ||
@@ -1245,6 +1329,7 @@ async function initialize() {
       editable();
       const frozen = leaseCapture();
       const manifest = await workspace.stable();
+      const publicationGeneration = fileEventGeneration;
       if (!currentLease(frozen))
         throw new Error(
           "編集中に対象/編集権が変わりました。未反映の出力は保全します",
@@ -1263,6 +1348,7 @@ async function initialize() {
       );
       workspace.active.version = p.head;
       workspace.active.hash = manifest.hash;
+      localDirty = fileEventGeneration !== publicationGeneration;
       shared = { ...shared, ...p };
       return state();
     },
@@ -1484,6 +1570,7 @@ async function initialize() {
         "terminal.resize",
         "terminal.stop",
         "share.cancelLogin",
+        "files.cancel",
         "preview.bounds",
       ].includes(action);
       const rootBefore = workspace.active?.root;
@@ -1494,6 +1581,7 @@ async function initialize() {
         harnessPending = null;
         appliedHarness = null;
         lastBackup = null;
+        if (!workspace.active) resetLocalProjection();
       }
       if (
         ![
@@ -1555,6 +1643,7 @@ async function initialize() {
       clearInterval(polling);
       clearInterval(fallback);
       watcher?.close();
+      await inventory?.close();
       clearTimeout(watchTimer);
       try {
         await stopTerminal();

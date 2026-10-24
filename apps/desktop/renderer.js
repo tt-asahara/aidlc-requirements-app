@@ -216,6 +216,14 @@ function render(s) {
     統合文書: [],
     関連資料: [],
   };
+  const listing = s.inventory;
+  $("inventoryStatus").textContent = listing
+    ? `${listing.page || 1}ページ · ${listing.scanned}項目を調査${listing.cancelled ? " · 読取を中止（再読取で先頭から再開）" : listing.complete ? " · 列挙済み" : " · 一覧は途中です。次のページで続けられます"}${listing.dirty ? " · 更新あり：再読取で一覧を更新" : ""}${listing.skipped ? ` · 対象外/変更中 ${listing.skipped}件` : ""}${listing.failure ? ` · ${listing.failure}` : ""}。本文は開く時に検証します。`
+    : "一覧を準備しています";
+  $("previousFiles").disabled =
+    !listing?.hasPrevious || listing.reading || listing.cancelled;
+  $("nextFiles").disabled = !listing?.hasNext || listing.reading;
+  $("cancelFiles").disabled = !listing?.hasNext || listing.cancelled;
   for (const f of s.files ?? []) {
     if (!/\.(md|html|txt)$/i.test(f.path)) continue;
     const intent = f.path.match(
@@ -242,6 +250,7 @@ function render(s) {
       box.append(el("h3", name));
       for (const f of files) {
         const b = el("button", f.path.split("/").slice(-2).join("/"));
+        if (f.oversized) b.textContent += "（本文2MiB超）";
         b.title = f.path;
         b.className = f.path === s.selected?.path ? "active" : "";
         b.onclick = () => void select(f.path).catch(() => {});
@@ -253,7 +262,9 @@ function render(s) {
       $("fileList").append(
         el(
           "p",
-          "まだ成果物がありません。CLIで作成した実ファイルを表示します。",
+          listing && !listing.complete
+            ? "このページに表示対象はありません。次のページへ進むか、再読取で先頭へ戻れます。"
+            : "まだ成果物がありません。CLIで作成した実ファイルを表示します。",
         ),
       );
   }
@@ -349,7 +360,8 @@ function render(s) {
   layout();
 }
 let workflowKey = "",
-  mappedFile = "";
+  mappedFile = "",
+  mappingContextKey = "";
 function currentContract() {
   return state.workflow?.mockups?.contracts.find(
     (c) => c.stage === $("contractStage").value,
@@ -407,6 +419,12 @@ function renderWorkflow() {
   const c = currentContract(),
     key = JSON.stringify([state.viewIntent, c]);
   if (workflowKey !== key) {
+    const context = JSON.stringify([state.viewIntent, c?.stage, c?.sha256]);
+    const prior =
+      context === mappingContextKey
+        ? JSON.stringify(currentMapping() ?? null)
+        : null;
+    mappingContextKey = context;
     workflowKey = key;
     $("mapping").replaceChildren();
     for (const [index, m] of (c?.mappings ?? []).entries()) {
@@ -414,6 +432,10 @@ function renderWorkflow() {
       o.value = String(index);
       $("mapping").append(o);
     }
+    const previousIndex = c?.mappings.findIndex(
+      (m) => JSON.stringify(m) === prior,
+    );
+    if (previousIndex >= 0) $("mapping").value = String(previousIndex);
     $("contractStatus").textContent = c
       ? `契約: ${c.parsing} / 実バイト整合: ${c.integrity} / 工程記録: ${c.stageMark ?? "なし"} · ${c.message ?? "契約の解析・ハッシュ一致だけでは本人承認の証明になりません。"}`
       : "契約未生成";
@@ -461,6 +483,13 @@ async function createLocal() {
 button("newLocal", createLocal);
 button("openLocal", () => call("local.open"));
 button("refresh", () => call("files.refresh"));
+button("nextFiles", () =>
+  call("files.page", { id: state.inventory?.id, direction: "next" }),
+);
+button("previousFiles", () =>
+  call("files.page", { id: state.inventory?.id, direction: "previous" }),
+);
+button("cancelFiles", () => call("files.cancel", { id: state.inventory?.id }));
 async function startCli() {
   if (!state.active) {
     $("startDialog").showModal();
@@ -868,7 +897,21 @@ $("canvas").onkeydown = (e) => {
   }
 };
 button("capture", async () => {
-  shot = await call("preview.capture");
+  const mapping = currentMapping(),
+    contract = currentContract();
+  const mapped = mapping && mappingPath() === state.selected?.path;
+  const round = state.viewIntent,
+    active = state.workflow?.mockups?.isActive;
+  const expectedContract =
+    mapped && contract?.sha256
+      ? {
+          path: `aidlc/spaces/${state.workflow.mockups.space}/${contract.path}`,
+          sha256: contract.sha256,
+        }
+      : null;
+  shot = await call("preview.capture", { contract: expectedContract });
+  if (shot.reference.path !== state.selected?.path)
+    throw new Error("対象が変わりました。下書きを保持して再撮影してください");
   selection = null;
   shotImage = new Image();
   await new Promise((resolve, reject) => {
@@ -884,11 +927,9 @@ button("capture", async () => {
     `対象 ${shot.reference.path} · 版 ${shot.reference.version} · viewport ${shot.width}×${shot.height} · 原本hash ${shot.reference.sha256}`;
   if (!$("draft").value)
     $("draft").value = "この画面の指定箇所を、次のように修正したいです。\n\n";
-  const mapping = currentMapping(),
-    contract = currentContract();
-  if (mapping && mappingPath() === state.selected?.path) {
+  if (mapped) {
     $("draft").value +=
-      `\n参照ラウンド: ${state.viewIntent} / ${contract.stage}\n議論対象: ${mapping.screen} / ${mapping.state}（自動再生なし）\nAC: ${mapping.ac}\n契約hash: ${contract.sha256}\n${state.workflow.mockups.isActive ? "" : "過去資料の引用です。過去ラウンドを暗黙に再開・変更しません。\n"}`;
+      `\n参照ラウンド: ${round} / ${contract.stage}\n議論対象: ${mapping.screen} / ${mapping.state}（自動再生なし）\nAC: ${mapping.ac}\n契約hash: ${contract.sha256}\n${active ? "" : "過去資料の引用です。過去ラウンドを暗黙に再開・変更しません。\n"}`;
   }
   paint();
   layout();

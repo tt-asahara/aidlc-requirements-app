@@ -81,3 +81,68 @@ test("partial pages, cancellation and lazy content checks preserve path/secret/l
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test("directory replacement terminates the cursor with a reason instead of reading a different tree", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "v3-inventory-root-"));
+  const old = `${root}-old`;
+  let inv;
+  try {
+    for (let i = 0; i < 3; i++)
+      await fs.writeFile(path.join(root, `${i}.md`), "old");
+    inv = new LocalInventory(root, { pageSize: 1 });
+    await inv.page();
+    await fs.rename(root, old);
+    await fs.mkdir(root);
+    await fs.writeFile(path.join(root, "private.md"), "replacement");
+    await assert.rejects(inv.page(), /置き換わりました/);
+    assert(inv.summary().failure);
+    assert.equal(inv.frames.length, 0);
+  } finally {
+    await inv?.close();
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(old, { recursive: true, force: true });
+  }
+});
+
+test("a file growing after stat cannot force an unbounded read/allocation", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "v3-lazy-growth-"));
+  const name = path.join(root, "grow.md");
+  await fs.writeFile(name, "safe");
+  const original = fs.open;
+  let maxBuffer = 0,
+    totalRead = 0;
+  t.mock.method(fs, "open", async (...args) => {
+    const handle = await original(...args);
+    let first = true;
+    return {
+      stat: async () => {
+        const s = await handle.stat();
+        if (first) {
+          first = false;
+          const writer = await original(name, "a");
+          try {
+            await writer.writeFile(Buffer.alloc(1024 * 1024));
+          } finally {
+            await writer.close();
+          }
+        }
+        return s;
+      },
+      read: async (buffer, ...rest) => {
+        maxBuffer = Math.max(maxBuffer, buffer.length);
+        const result = await handle.read(buffer, ...rest);
+        totalRead += result.bytesRead;
+        return result;
+      },
+      close: () => handle.close(),
+    };
+  });
+  try {
+    await assert.rejects(loadContent(root, "grow.md"), /書込中|変更/);
+    assert(maxBuffer <= 5);
+    assert(totalRead <= 5);
+  } finally {
+    t.mock.restoreAll();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

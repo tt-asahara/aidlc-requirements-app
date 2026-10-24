@@ -3,24 +3,22 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import {
-  hash,
-  indexSnapshot,
-  snapshot,
-  validateManifest,
-} from "./manifest.mjs";
+import { LocalInventory } from "./inventory.mjs";
+import { hash, snapshot, validateManifest } from "./manifest.mjs";
 
 test("local artifact index reads >20MiB without becoming an upload manifest; shared boundary remains 20MiB", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "v3-index-"));
   try {
     await fs.writeFile(path.join(root, "mock.html"), "<h1>合成モック</h1>");
-    const small = await indexSnapshot(root);
-    assert.equal(small.hash, (await snapshot(root)).hash);
+    const small = await snapshot(root);
+    assert.equal(small.files.length, 1);
     const bytes = JSON.stringify({ snapshot: "a".repeat(1024 * 1024 - 32) });
     for (let i = 0; i < 21; i++)
       await fs.writeFile(path.join(root, `snapshot-${i}.json`), bytes);
-    const local = await indexSnapshot(root);
-    assert(local.totalBytes > 20 * 1024 * 1024);
+    const inventory = new LocalInventory(root, { kind: "all" });
+    const local = await inventory.page();
+    await inventory.close();
+    assert(local.files.reduce((sum, f) => sum + f.bytes, 0) > 20 * 1024 * 1024);
     assert.equal(local.files.length, 22);
     assert(
       local.files.every(
@@ -36,13 +34,6 @@ test("local artifact index reads >20MiB without becoming an upload manifest; sha
       await fs.readFile(path.join(root, "snapshot-0.json"), "utf8"),
       bytes,
     );
-    // Local reads remain bounded independently of the upload budget.
-    for (let i = 21; i < 65; i++)
-      await fs.writeFile(path.join(root, `snapshot-${i}.json`), bytes);
-    await assert.rejects(
-      indexSnapshot(root),
-      (e) => e.code === "LOCAL_INDEX_LIMIT" && e.limitBytes === 67108864,
-    );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -53,7 +44,7 @@ test("index retains private-content, symlink, individual-file and normalized-pat
   const check = async (name, bytes, pattern) => {
     const file = path.join(root, name);
     await fs.writeFile(file, bytes);
-    await assert.rejects(indexSnapshot(root), pattern);
+    await assert.rejects(snapshot(root), pattern);
     await fs.unlink(file);
   };
   try {
@@ -64,7 +55,7 @@ test("index retains private-content, symlink, individual-file and normalized-pat
     );
     await check("key.md", "-----BEGIN PRIVATE KEY-----", /秘密情報/);
     await fs.symlink("/tmp", path.join(root, "linked"));
-    await assert.rejects(indexSnapshot(root), /symlink/);
+    await assert.rejects(snapshot(root), /symlink/);
     await fs.unlink(path.join(root, "linked"));
     const b = Buffer.from("x");
     const f = (name) => ({

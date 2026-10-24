@@ -45,7 +45,6 @@ export function safeName(name) {
     throw new Error("共有/閲覧対象外のパスです");
   return name;
 }
-export const LOCAL_INDEX_LIMIT = 64 * 1024 * 1024;
 function violation(code, message, details = {}) {
   return Object.assign(new Error(message), { code, ...details });
 }
@@ -231,28 +230,6 @@ export async function snapshot(root) {
   });
   return validateManifest(result);
 }
-// A read-only index is deliberately not a publishable manifest: it retains no
-// file payloads. Keep per-file/path/secret checks, with a separate bounded read
-// budget. Upload/materialization still validate the complete 20MiB manifest.
-export async function indexSnapshot(root) {
-  const files = [];
-  let totalBytes = 0;
-  await visitProjectFiles(root, (name, bytes) => {
-    totalBytes += bytes.length;
-    if (totalBytes > LOCAL_INDEX_LIMIT)
-      throw violation(
-        "LOCAL_INDEX_LIMIT",
-        "ローカル一覧の総読取上限64MiBを超えています。対象フォルダを確認してください",
-        { actualBytes: totalBytes, limitBytes: LOCAL_INDEX_LIMIT },
-      );
-    const sha256 = hash(bytes);
-    validateManifest([{ path: name, sha256, data: bytes.toString("base64") }]);
-    files.push({ path: name, sha256, bytes: bytes.length });
-  });
-  files.sort((a, b) => a.path.localeCompare(b.path, "en"));
-  validatePathLayout(files.map((f) => f.path));
-  return { files, hash: manifestHash(files), totalBytes };
-}
 export async function materialize(root, manifest) {
   const checked = validateManifest(manifest.files ?? manifest);
   await fs.mkdir(root, { recursive: true, mode: 0o700 });
@@ -280,4 +257,3 @@ async function stableRead(root, read) {
 }
 
 export const stableSnapshot = (root) => stableRead(root, snapshot);
-export const stableIndexSnapshot = (root) => stableRead(root, indexSnapshot);

@@ -67,9 +67,10 @@ try {
   await p.locator("#contractStage").selectOption("refined-mockups");
   await expect(p.locator("#mapping option")).toHaveCount(2);
   await expect(p.locator("#contractStatus")).toContainText(
-    "supported / 実バイト整合: matched",
+    "supported / 実バイト整合: unchecked",
   );
   await p.locator("#openMapping").click();
+  await expect(p.locator("#contractStatus")).toContainText("matched");
   await p.locator("#mapping").selectOption("1");
   const before = (await call("state")).selected;
   await expect(p.locator("#mappingHint")).toContainText(

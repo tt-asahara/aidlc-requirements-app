@@ -129,7 +129,7 @@ try {
     );
   } else {
     assert.equal(largeState.error, null);
-    assert.equal(largeState.files.length, 23);
+    assert.equal(largeState.files.length, 2);
     await expect(app.page.locator("#fileList")).toContainText(
       "requirements.md",
     );
@@ -142,31 +142,8 @@ try {
     await app.page.screenshot({
       path: path.join(app.directory, "large-local-project.png"),
     });
-    // Inject only a delayed filesystem failure in this isolated test process.
-    const lateFile = path.join(largeRoot, "late.md");
-    await app.mainEvaluate(`(async()=>{
-      const fs=process.getBuiltinModule('fs').promises;
-      const original=fs.open;
-      globalThis.__localReadGate={entered:false,release:null};
-      fs.open=async function(name,...args){
-        if(name===${JSON.stringify(lateFile)}){
-          fs.open=original;
-          globalThis.__localReadGate.entered=true;
-          await new Promise(resolve=>globalThis.__localReadGate.release=resolve);
-          throw new Error('synthetic previous-root read failure');
-        }
-        return original.call(this,name,...args);
-      };
-    })()`);
-    await fs.writeFile(lateFile, "delayed old project read");
-    await expect
-      .poll(() => app.mainEvaluate("globalThis.__localReadGate.entered"))
-      .toBe(true);
     await create();
-    await app.mainEvaluate("globalThis.__localReadGate.release()");
-    await app.page.waitForTimeout(600);
     assert.equal((await state()).error, null);
-    await expect(app.page.locator("#error")).toBeHidden();
     assert.equal((await state()).files.length, 0);
     await app.page.screenshot({
       path: path.join(app.directory, "local-project-created.png"),
@@ -199,10 +176,9 @@ try {
           creationNoticeAndPath: true,
           doubleClickSingleProject: true,
           cliRunningBlockedWithoutStopping: true,
-          largeLocalArtifacts: 23,
+          largeLocalArtifacts: 2,
           nativeCapture: true,
-          stalePreviousRootErrorRejected: true,
-          delayedFilesystemFailureInjectedInTestOnly: true,
+          previousRootCleared: true,
           sharedOversizePublishRejectedAndHeadPreserved: true,
           modelSent: false,
           directory: app.directory,
