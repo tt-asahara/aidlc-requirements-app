@@ -1,6 +1,6 @@
 // Path/contract metadata only: never read an HTML title to build the list.
 const internal =
-  /(?:^|\/)(?:src|source|scripts?|tools?|tooling|tests?|__tests__|fixtures?|test-results|playwright-report|coverage|evidence|screenshots?|history|reviews?|memory|node_modules|dist|build)(?:\/|$)/i;
+  /(?:^|\/)(?:apps|packages|src|source|scripts?|tools?|tooling|tests?|__tests__|fixtures?|test-results|playwright-report|coverage|evidence|screenshots?|history|reviews?|memory|node_modules|dist|build)(?:\/|$)/i;
 const internalName =
   /^(?:AGENTS|CLAUDE|AI-DLC-INSTALLATION|CHANGELOG|LICENSE|CONTRIBUTING|.*(?:handoff|implementation-plan|routing|contract|questions|tool-change-record|review-list|crosswalk))\.(?:md|txt)$/i;
 export function artifactKind(name) {

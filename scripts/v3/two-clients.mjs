@@ -44,9 +44,7 @@ try {
   await expect
     .poll(async () => (await call(a, "state")).shared.head)
     .toBe(published);
-  await a.page
-    .getByRole("button", { name: "requirements.md", exact: true })
-    .click();
+  await a.page.locator('button[data-file-path="requirements.md"]').click();
   await a.page.waitForFunction(() =>
     document.querySelector("#document").textContent.includes("第1共有版"),
   );

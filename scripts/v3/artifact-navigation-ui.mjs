@@ -135,6 +135,18 @@ try {
   await write(`${base}/intents/intents.json`, "{broken");
   await call("files.refresh");
   await expect(button(`${design}/README.md`)).toBeVisible();
+  await write(
+    `${base}/intents/intents.json`,
+    JSON.stringify([
+      {
+        dirName: "round-a",
+        slug: "合成予約",
+        scope: "ui-poc-requirements",
+        status: "active",
+      },
+    ]),
+  );
+  await call("files.refresh");
   await write(`${stage}/ui-poc-rough-contract.md`, "");
   await fs.truncate(
     path.join(root, `${stage}/ui-poc-rough-contract.md`),
@@ -152,6 +164,7 @@ try {
   await expect
     .poll(async () => (await call("state")).documents.design.inventory.page)
     .toBeGreaterThan(before);
+  await expect(button(`${design}/README.md`)).toBeVisible();
   await expect(app.page.locator("#screenSearch")).toHaveValue("一致しない検索");
   await app.page.locator("#screenSearch").fill("");
   await app.page.locator("#screenStageFilter").selectOption("all");

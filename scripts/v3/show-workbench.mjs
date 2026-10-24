@@ -7,11 +7,11 @@ const call = (action, body = {}) =>
   app.page.evaluate(([a, b]) => window.workbench.invoke(a, b), [action, body]);
 await call("local.create");
 const { active } = await call("state");
-await fs.mkdir(path.join(active.root, "aidlc/design-document"), {
+await fs.mkdir(path.join(active.root, "aidlc/spaces/default/design-document"), {
   recursive: true,
 });
 await fs.writeFile(
-  path.join(active.root, "aidlc/design-document/README.md"),
+  path.join(active.root, "aidlc/spaces/default/design-document/README.md"),
   "# 予約管理アプリの設計書\n\n画面提示用の合成データです。AI生成・工程承認の完了を示しません。\n\n## 今回検討すること\n予約一覧から、キャンセルの確認画面へ進む体験。",
 );
 await fs.writeFile(
@@ -28,9 +28,7 @@ await app.page.evaluate(async () => {
   await window.workbench.invoke("terminal.version");
 });
 await app.page.waitForTimeout(1800);
-await app.page
-  .getByRole("button", { name: "aidlc/mock.html", exact: true })
-  .click();
+await app.page.locator('button[data-file-path="aidlc/mock.html"]').click();
 const screenshot = path.join(app.directory, "v3-three-pane.png");
 await app.page
   .getByRole("button", { name: "操作後の画面に修正箇所を指定", exact: true })

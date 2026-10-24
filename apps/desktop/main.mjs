@@ -354,11 +354,14 @@ async function refreshInside({ reset = false } = {}) {
       const intent = progress.intents.some((i) => i.dirName === viewIntent)
         ? viewIntent
         : (progress.active?.dirName ?? progress.intents[0]?.dirName ?? null);
-      projection = {
-        progress,
-        mockups: intent ? await readMockups(root, intent, false) : null,
-        message: null,
-      };
+      projection = { progress, mockups: null, message: null };
+      try {
+        projection.mockups = intent
+          ? await readMockups(root, intent, false)
+          : null;
+      } catch (e) {
+        projection.message = `契約を読めません。工程記録と直接HTML閲覧は利用できます: ${e.message}`;
+      }
       if (workspace.active?.root === root) viewIntent = intent;
     } catch (e) {
       projection = {

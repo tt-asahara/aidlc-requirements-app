@@ -103,7 +103,7 @@ try {
     .not.toBe(project.head);
   const published = (await call(a, "state")).shared.head;
   await expect(a.page.locator("#fileList")).toContainText("mock.html");
-  await a.page.getByRole("button", { name: "mock.html", exact: true }).click();
+  await a.page.locator('button[data-file-path="mock.html"]').click();
   await expect
     .poll(async () => (await call(a, "state")).selected?.path)
     .toBe("mock.html");

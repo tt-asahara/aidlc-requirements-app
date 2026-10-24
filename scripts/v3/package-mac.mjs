@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { promisify } from "node:util";
+import { markdownNotices } from "./markdown-notices.mjs";
 
 const exec = promisify(execFile);
 if (process.platform !== "darwin" || process.arch !== "arm64")
@@ -81,6 +82,9 @@ for (const name of [
     path.join(path.dirname(require.resolve(`${name}/package.json`)), "LICENSE"),
     path.join(notices, `${name.replaceAll("/", "-")}-LICENSE`),
   );
+const markdownLicenseCount = await markdownNotices(
+  path.join(notices, "markdown"),
+);
 const plist = path.join(bundle, "Contents/Info.plist");
 for (const [key, value] of [
   ["CFBundleName", "AI-DLC Workbench"],
@@ -117,6 +121,7 @@ const receipt = {
   notarized: false,
   externalRuntimeRequired: false,
   bundledBunVersion: bunVersion.trim(),
+  markdownLicenseCount,
   userInstalledClaudeRequired: true,
   gitRequiredForSourceFetch: true,
 };

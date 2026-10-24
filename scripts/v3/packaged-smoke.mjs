@@ -36,11 +36,14 @@ try {
     ).trim(),
     "1.3.14",
   );
-  await fs.mkdir(path.join(s.active.root, "aidlc/design-document"), {
-    recursive: true,
-  });
+  await fs.mkdir(
+    path.join(s.active.root, "aidlc/spaces/default/design-document"),
+    {
+      recursive: true,
+    },
+  );
   await fs.writeFile(
-    path.join(s.active.root, "aidlc/design-document/README.md"),
+    path.join(s.active.root, "aidlc/spaces/default/design-document/README.md"),
     "# 設計書の概要\nローカル成果物を広く読む",
   );
   await fs.writeFile(
@@ -48,9 +51,7 @@ try {
     '<!doctype html><html lang="ja"><style>body{font:18px -apple-system,sans-serif;color:#24513d;background:#f8faf4;padding:40px}h1{font-size:42px}article{background:white;padding:28px;border:1px solid #cddac5;border-radius:18px}button{padding:15px 24px;border:0;border-radius:8px;color:white;background:#285e46}</style><small>mori / BOOKINGS · 合成モック</small><h1>予約を、ひと目で。</h1><p>次の予定を確認して、必要な操作へ。</p><article><small>10月25日（日）14:00 – 15:00</small><h2>美術館ガイドツアー</h2><p>参加人数：2名</p><button>キャンセルについて確認</button></article><p>画面検証用。実予約・モデル送信はありません。</p>',
   );
   await call("files.refresh");
-  await app.page
-    .getByRole("button", { name: "aidlc/mock.html", exact: true })
-    .click();
+  await app.page.locator('button[data-file-path="aidlc/mock.html"]').click();
   await app.page
     .getByRole("button", { name: "バージョンを表示", exact: true })
     .click();

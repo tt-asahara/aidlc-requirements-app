@@ -1,4 +1,4 @@
-import { LocalInventory, loadContent } from "./inventory.mjs";
+import { LocalInventory, loadContent, metadataSafe } from "./inventory.mjs";
 import { safeName } from "./manifest.mjs";
 export async function activeDocumentSpace(root) {
   let value = "default";
@@ -37,6 +37,7 @@ export class DocumentCatalog {
   state() {
     return {
       space: this.space,
+      overview: this.overview ?? null,
       ...Object.fromEntries(
         Object.entries(this.groups).map(([name, g]) => [
           name,
@@ -62,6 +63,14 @@ export class DocumentCatalog {
     }
   }
   async initialize() {
+    try {
+      this.overview = await metadataSafe(
+        this.root,
+        `aidlc/spaces/${this.space}/design-document/README.md`,
+      );
+    } catch {
+      this.overview = null;
+    }
     await Promise.all(
       Object.entries(this.groups).map(async ([n, g]) => {
         try {

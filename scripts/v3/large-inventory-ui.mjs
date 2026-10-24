@@ -26,9 +26,9 @@ try {
   await app.page.locator("#newLocal").click();
   await expect.poll(async () => !!(await state()).active).toBe(true);
   const root = (await state()).active.root;
-  await fs.mkdir(path.join(root, "history"));
+  await fs.mkdir(path.join(root, "mockups"));
   for (let i = 0; i < 2105; i++) {
-    const p = path.join(root, "history", `evidence-${i}.md`);
+    const p = path.join(root, "mockups", `screen-${i}.html`);
     await fs.writeFile(p, "");
     await fs.truncate(p, 65536);
   }
@@ -87,7 +87,7 @@ try {
     ]),
   );
   await app.mainEvaluate(
-    `(()=>{const fs=process.getBuiltinModule('fs').promises,original=fs.open;globalThis.historyBodyReads=0;fs.open=async function(name,...args){if(String(name).startsWith(${JSON.stringify(path.join(root, "history") + path.sep)})){globalThis.historyBodyReads++;throw new Error('history body unexpectedly read');}return original.call(this,name,...args);};const {clipboard}=process.getBuiltinModule('module').createRequire(process.cwd()+'/v3-test.cjs')('electron');globalThis.testClipboard='';clipboard.write=async items=>{globalThis.testClipboard=await(await items[0].getType('text/plain')).text();};clipboard.readText=async()=>globalThis.testClipboard;clipboard.has=async type=>type==='image/png';return true;})()`,
+    `(()=>{const fs=process.getBuiltinModule('fs').promises,original=fs.open;globalThis.unselectedBodyReads=0;fs.open=async function(name,...args){if(String(name).startsWith(${JSON.stringify(path.join(root, "mockups") + path.sep)})){globalThis.unselectedBodyReads++;throw new Error('history body unexpectedly read');}return original.call(this,name,...args);};const {clipboard}=process.getBuiltinModule('module').createRequire(process.cwd()+'/v3-test.cjs')('electron');globalThis.testClipboard='';clipboard.write=async items=>{globalThis.testClipboard=await(await items[0].getType('text/plain')).text();};clipboard.readText=async()=>globalThis.testClipboard;clipboard.has=async type=>type==='image/png';return true;})()`,
   );
   const started = Date.now();
   await call("files.refresh");
@@ -115,7 +115,7 @@ try {
   assert(seen.size > 2000);
   assert(pages > 10);
   assert(oversizedVisible);
-  assert.equal(await app.mainEvaluate("globalThis.historyBodyReads"), 0);
+  assert.equal(await app.mainEvaluate("globalThis.unselectedBodyReads"), 0);
   const enumerationMs = Date.now() - started;
   await app.page.locator("#contractStage").selectOption("refined-mockups");
   await expect(app.page.locator("#contractStatus")).toContainText("unchecked");
@@ -173,7 +173,7 @@ try {
   await call("files.refresh");
   const id = (await state()).inventory.id;
   await app.mainEvaluate(
-    `(()=>{const fs=process.getBuiltinModule('fs').promises,original=fs.lstat;fs.lstat=async function(name,...args){if(String(name).includes('/history/'))await new Promise(resolve=>setTimeout(resolve,20));return original.call(this,name,...args);};return true;})()`,
+    `(()=>{const fs=process.getBuiltinModule('fs').promises,original=fs.lstat;fs.lstat=async function(name,...args){if(String(name).includes('/mockups/'))await new Promise(resolve=>setTimeout(resolve,20));return original.call(this,name,...args);};return true;})()`,
   );
   const reading = call("files.page", { id, direction: "next" });
   await expect.poll(async () => (await state()).inventory.reading).toBe(true);
@@ -194,11 +194,11 @@ try {
       await record("large-inventory-ui", {
         appCommit: (await state()).runtime.buildCommit,
         packaged,
-        logicalHistoryBytes: 2105 * 65536,
+        logicalUnselectedBytes: 2105 * 65536,
         metadataItems: seen.size,
         pages,
         enumerationMs,
-        historyBodyReads: 0,
+        unselectedBodyReads: 0,
         maximumPageItems: 200,
         oversizedListedAndReadRefused: true,
         actualCssAndPngProof: true,

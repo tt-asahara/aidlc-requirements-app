@@ -14,9 +14,11 @@ try {
     .click();
   const state = await call("state"),
     root = state.active.root;
-  await fs.mkdir(path.join(root, "aidlc/design-document"), { recursive: true });
+  await fs.mkdir(path.join(root, "aidlc/spaces/default/design-document"), {
+    recursive: true,
+  });
   await fs.writeFile(
-    path.join(root, "aidlc/design-document/README.md"),
+    path.join(root, "aidlc/spaces/default/design-document/README.md"),
     "# 統合設計書\n実ファイルの更新を確認する。",
   );
   await fs.writeFile(
@@ -34,9 +36,7 @@ try {
   );
   await fs.writeFile(path.join(root, "aidlc/other.html"), "<h1>別の原本</h1>");
   await call("files.refresh");
-  await page
-    .getByRole("button", { name: "aidlc/mock.html", exact: true })
-    .click();
+  await page.locator('button[data-file-path="aidlc/mock.html"]').click();
   await page.waitForTimeout(500);
   const cdp = await app.browser.newBrowserCDPSession();
   const targets = (await cdp.send("Target.getTargets")).targetInfos;
@@ -109,6 +109,13 @@ try {
     "undefined",
     "assets cannot escape selected HTML directory",
   );
+  await assert.rejects(call("preview.capture"), /安定|資産|directory/);
+  const safeHtml = (
+    await fs.readFile(path.join(root, "aidlc/mock.html"), "utf8")
+  ).replace('<script src="../other/outside.js"></script>', "");
+  await fs.writeFile(path.join(root, "aidlc/mock.html"), safeHtml);
+  await call("files.select", { path: "aidlc/mock.html" });
+  await evaluate("document.querySelector('button').click()");
   const originalUrl = await evaluate("location.href");
   await evaluate(
     "location.href = location.href.replace('mock.html','other.html')",
@@ -162,7 +169,9 @@ try {
     .getByRole("button", { name: "操作モードへ戻る", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "design-document/README.md", exact: true })
+    .locator(
+      'button[data-file-path="aidlc/spaces/default/design-document/README.md"]',
+    )
     .click();
   await page.waitForFunction(() =>
     document.querySelector("#document").textContent.includes("統合設計書"),
@@ -171,9 +180,7 @@ try {
   await page.screenshot({
     path: path.join(app.directory, "workbench-document.png"),
   });
-  await page
-    .getByRole("button", { name: "aidlc/mock.html", exact: true })
-    .click();
+  await page.locator('button[data-file-path="aidlc/mock.html"]').click();
   assert.equal(
     await evaluate("localStorage.getItem('sourceMarker')"),
     null,

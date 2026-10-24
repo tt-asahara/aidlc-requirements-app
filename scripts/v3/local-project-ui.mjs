@@ -133,9 +133,7 @@ try {
     await expect(app.page.locator("#fileList")).toContainText(
       "requirements.md",
     );
-    await app.page
-      .getByRole("button", { name: "mock.html", exact: true })
-      .click();
+    await app.page.locator('button[data-file-path="mock.html"]').click();
     await app.page.locator("#capture").click();
     await expect(app.page.locator("#annotation")).toBeVisible();
     await expect(app.page.locator("#canvas")).toBeVisible();

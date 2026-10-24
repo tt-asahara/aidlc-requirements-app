@@ -88,7 +88,7 @@ try {
   );
   await fs.writeFile(path.join(root, "keep.md"), "existing project content");
   await call("files.refresh");
-  await app.page.getByRole("button", { name: "keep.md", exact: true }).click();
+  await app.page.locator('button[data-file-path="keep.md"]').click();
   const cwd = path.join(app.directory, "temporary-cli-cwd");
   await fs.mkdir(cwd);
   await app.mainEvaluate(`process.chdir(${JSON.stringify(cwd)});true`);

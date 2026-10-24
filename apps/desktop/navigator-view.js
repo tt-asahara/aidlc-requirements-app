@@ -115,7 +115,14 @@ export function navigatorView(current, call, select) {
       $(`${name}Cancel`).disabled = !inv?.hasNext || inv.cancelled;
       files(
         `${name}List`,
-        group?.files ?? [],
+        name === "design" && s.documents?.overview
+          ? [
+              s.documents.overview,
+              ...(group?.files ?? []).filter(
+                (f) => f.path !== s.documents.overview.path,
+              ),
+            ]
+          : (group?.files ?? []),
         s,
         inv?.complete
           ? "まだ文書が生成されていません。"
