@@ -24,6 +24,7 @@ const button = (name) =>
   app.page.locator(`button[data-file-path=${JSON.stringify(name)}]`);
 try {
   await app.page.locator("#newLocal").click();
+  await expect.poll(async () => !!(await call("state")).active).toBe(true);
   const root = (await call("state")).active.root;
   const base = "aidlc/spaces/team",
     stage = `${base}/intents/round-a/ideation/rough-mockups`,
